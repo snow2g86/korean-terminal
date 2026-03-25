@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>한글 터미널</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0d1117;
+            color: #c9d1d9;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* === Title Bar === */
+        .titlebar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 16px;
+            background: #161b22;
+            border-bottom: 1px solid #30363d;
+            user-select: none;
+        }
+        .titlebar-left { display: flex; align-items: center; gap: 12px; }
+        .dots { display: flex; gap: 6px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+        .dot-red { background: #ff5f56; }
+        .dot-yellow { background: #ffbd2e; }
+        .dot-green { background: #27c93f; }
+        .title { font-size: 13px; color: #8b949e; }
+        .status { font-size: 12px; color: #8b949e; display: flex; align-items: center; gap: 6px; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; }
+        .status-dot.disconnected { background: #f85149; }
+
+        /* === Hardware Bar === */
+        .hw-bar {
+            display: flex; align-items: center; gap: 16px;
+            padding: 6px 16px; background: #0d1117;
+            border-bottom: 1px solid #21262d;
+            font-size: 11px; color: #8b949e;
+            font-family: 'D2Coding', 'Menlo', monospace;
+            user-select: none; overflow-x: auto; white-space: nowrap;
+        }
+        .hw-bar::-webkit-scrollbar { display: none; }
+        .hw-item { display: flex; align-items: center; gap: 6px; }
+        .hw-label { color: #58a6ff; font-weight: 600; min-width: 32px; }
+        .hw-spec { color: #6e7681; font-size: 10px; }
+        .hw-gauge {
+            position: relative;
+            width: 200px; height: 16px;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 2px;
+            overflow: hidden;
+            font-variant-numeric: tabular-nums;
+        }
+        .hw-gauge-fill {
+            position: absolute; top: 0; left: 0;
+            height: 100%;
+            transition: width 0.5s ease, background 0.5s ease;
+            opacity: 0.5;
+        }
+        .hw-gauge-text {
+            position: absolute; top: 0; left: 0;
+            width: 100%; height: 100%;
+            display: flex; align-items: center;
+            padding: 0 6px;
+            color: #c9d1d9; font-size: 10px;
+            font-variant-numeric: tabular-nums;
+            z-index: 1;
+        }
+        .hw-net-val {
+            color: #c9d1d9; font-size: 10px;
+            min-width: 140px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        /* === Main Layout === */
+        .main-area {
+            flex: 1; display: flex; min-height: 0; overflow: hidden;
+        }
+
+        /* === Sidebar === */
+        .sidebar {
+            width: 48px; background: #161b22;
+            border-right: 1px solid #30363d;
+            display: flex; flex-direction: column;
+            align-items: center; padding: 8px 0; gap: 4px;
+            overflow-y: auto;
+        }
+        .sidebar::-webkit-scrollbar { display: none; }
+
+        .tab-btn {
+            width: 36px; height: 36px;
+            background: #21262d; border: 1px solid transparent;
+            border-radius: 8px; color: #8b949e;
+            font-size: 12px; font-weight: 600;
+            cursor: pointer; display: flex;
+            align-items: center; justify-content: center;
+            transition: all 0.15s; position: relative;
+        }
+        .tab-btn:hover { background: #30363d; color: #c9d1d9; }
+        .tab-btn.active {
+            background: #0d1117; border-color: #58a6ff;
+            color: #58a6ff;
+        }
+        .tab-btn .tab-status {
+            position: absolute; bottom: 2px; right: 2px;
+            width: 6px; height: 6px; border-radius: 50%;
+            background: #3fb950;
+        }
+        .tab-btn .tab-status.dead { background: #f85149; }
+
+        .tab-btn-close {
+            display: none; position: absolute; top: -4px; right: -4px;
+            width: 14px; height: 14px; border-radius: 50%;
+            background: #f85149; color: #fff; font-size: 9px;
+            align-items: center; justify-content: center;
+            border: none; cursor: pointer; line-height: 1;
+        }
+        .tab-btn:hover .tab-btn-close { display: flex; }
+
+        .add-tab-btn {
+            width: 36px; height: 36px;
+            background: transparent; border: 1px dashed #30363d;
+            border-radius: 8px; color: #484f58;
+            font-size: 18px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s; margin-top: 4px;
+        }
+        .add-tab-btn:hover { border-color: #58a6ff; color: #58a6ff; }
+
+        /* === Terminal Panel (tab content area) === */
+        .terminal-panel {
+            flex: 1; display: flex; flex-direction: column;
+            min-width: 0; min-height: 0;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .tab-content {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+        }
+        .tab-content.active {
+            display: block;
+        }
+
+        /* === Pane System === */
+        .pane-split {
+            display: flex;
+            width: 100%; height: 100%;
+        }
+        .pane-split.horizontal { flex-direction: column; }
+        .pane-split.vertical { flex-direction: row; }
+
+        .pane-leaf {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            min-width: 0; min-height: 0;
+            overflow: hidden;
+            border: 1px solid #21262d;
+        }
+        .pane-leaf.focused {
+            border-color: #58a6ff;
+        }
+
+        /* === Pane Header === */
+        .pane-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 20px; min-height: 20px;
+            background: #1c2128;
+            padding: 0 4px;
+            font-size: 10px;
+            color: #8b949e;
+            user-select: none;
+            border-bottom: 1px solid #21262d;
+        }
+        .pane-leaf.focused .pane-header {
+            border-bottom: 1px solid #58a6ff;
+        }
+        .pane-header-left {
+            display: flex; align-items: center; gap: 4px;
+            overflow: hidden; white-space: nowrap;
+        }
+        .pane-header-right {
+            display: flex; align-items: center; gap: 2px;
+        }
+        .pane-header-btn {
+            background: none; border: none; color: #8b949e;
+            cursor: pointer; font-size: 10px; padding: 0 3px;
+            line-height: 18px; border-radius: 2px;
+        }
+        .pane-header-btn:hover { background: #30363d; color: #c9d1d9; }
+
+        /* === Resize Handle === */
+        .resize-handle {
+            background: transparent;
+            flex-shrink: 0;
+            z-index: 5;
+        }
+        .resize-handle.horizontal {
+            height: 4px; width: 100%;
+            cursor: row-resize;
+        }
+        .resize-handle.vertical {
+            width: 4px; height: 100%;
+            cursor: col-resize;
+        }
+        .resize-handle:hover, .resize-handle.active {
+            background: #30363d;
+        }
+
+        /* === Terminal inside pane === */
+        .pane-terminal-area {
+            flex: 1; display: flex; flex-direction: column;
+            min-height: 0; overflow: hidden;
+            position: relative;
+        }
+
+        .terminal-wrapper {
+            flex: 1; overflow: hidden; min-height: 0;
+            padding: 8px; position: relative;
+        }
+
+        .scrollback-indicator {
+            position: absolute; top: 8px; right: 16px;
+            background: rgba(88, 166, 255, 0.9); color: #fff;
+            padding: 4px 10px; border-radius: 4px;
+            font-size: 11px; z-index: 10; display: none; cursor: pointer;
+        }
+        .scrollback-indicator:hover { background: rgba(88, 166, 255, 1); }
+
+        .scrollback-view {
+            display: none; overflow-y: auto; height: 100%;
+            font-family: 'D2Coding', 'Noto Sans Mono CJK KR', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 14px; line-height: 1.35; white-space: pre;
+        }
+        .scrollback-view .line { height: 1.35em; overflow: hidden; opacity: 0.7; }
+        .scrollback-view .line:hover { opacity: 1; }
+
+        .screen {
+            font-family: 'D2Coding', 'Noto Sans Mono CJK KR', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 14px; line-height: 1.35; white-space: pre;
+            overflow: hidden; height: 100%;
+        }
+
+        .line { height: 1.35em; overflow: hidden; }
+        .cursor-cell { background: #58a6ff; color: #0d1117; }
+
+        /* === Browser Pane === */
+        .pane-browser-area {
+            flex: 1; display: flex; flex-direction: column;
+            min-height: 0; overflow: hidden;
+        }
+        .browser-url-bar {
+            display: flex; align-items: center; gap: 4px;
+            height: 28px; min-height: 28px;
+            background: #161b22;
+            padding: 0 6px;
+            border-bottom: 1px solid #30363d;
+        }
+        .browser-url-input {
+            flex: 1; background: #0d1117;
+            border: 1px solid #30363d; border-radius: 4px;
+            padding: 2px 8px; color: #c9d1d9; font-size: 11px;
+            font-family: 'D2Coding', 'Menlo', monospace;
+            outline: none; height: 22px;
+        }
+        .browser-url-input:focus { border-color: #58a6ff; }
+        .browser-iframe {
+            flex: 1; border: none; background: #fff;
+            width: 100%; min-height: 0;
+        }
+
+        /* === Bottom Bar === */
+        .bottom-bar {
+            background: #161b22;
+            border-top: 1px solid #30363d;
+            padding: 6px 12px 8px;
+        }
+        .bottom-bar.disabled {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .hint-bar {
+            display: flex; justify-content: space-between;
+            padding-bottom: 4px; font-size: 11px; color: #484f58;
+        }
+        .hint-bar kbd {
+            background: #30363d; padding: 1px 5px; border-radius: 3px;
+            font-size: 10px; color: #8b949e;
+        }
+        .input-row { display: flex; align-items: center; gap: 6px; }
+        .input-row input {
+            flex: 1; background: #0d1117;
+            border: 1px solid #30363d; border-radius: 6px;
+            padding: 8px 12px; color: #c9d1d9; font-size: 14px;
+            font-family: 'D2Coding', 'Noto Sans Mono CJK KR', 'Menlo', monospace;
+            outline: none;
+        }
+        .input-row input:focus { border-color: #30363d; }
+        .input-row input::placeholder { color: #484f58; }
+        .input-row button {
+            border: none; border-radius: 6px; padding: 8px 12px;
+            font-size: 13px; font-weight: 500; cursor: pointer;
+            transition: background 0.15s; white-space: nowrap;
+        }
+        .btn-send { background: #238636; color: #fff; }
+        .btn-send:hover { background: #2ea043; }
+        .btn-key { background: #30363d; color: #c9d1d9; min-width: 38px; }
+        .btn-key:hover { background: #484f58; }
+        .btn-danger { background: #da3633; color: #fff; }
+        .btn-danger:hover { background: #b62324; }
+    </style>
+</head>
+<body>
+    <div class="titlebar">
+        <div class="titlebar-left">
+            <div class="dots">
+                <div class="dot dot-red"></div>
+                <div class="dot dot-yellow"></div>
+                <div class="dot dot-green"></div>
+            </div>
+            <span class="title" id="termTitle">한글 터미널</span>
+        </div>
+        <div class="status">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">연결 중...</span>
+        </div>
+    </div>
+
+    <div class="hw-bar" id="hwBar">
+        <div class="hw-item">
+            <span class="hw-label">CPU</span>
+            <span class="hw-spec" id="hwCpuSpec">--</span>
+            <div class="hw-gauge">
+                <div class="hw-gauge-fill" id="hwCpuBar" style="width:0%;background:#3fb950"></div>
+                <div class="hw-gauge-text" id="hwCpuText">--%</div>
+            </div>
+        </div>
+        <div class="hw-item">
+            <span class="hw-label">MEM</span>
+            <span class="hw-spec" id="hwMemSpec">--</span>
+            <div class="hw-gauge">
+                <div class="hw-gauge-fill" id="hwMemBar" style="width:0%;background:#58a6ff"></div>
+                <div class="hw-gauge-text" id="hwMemText">--%</div>
+            </div>
+        </div>
+        <div class="hw-item">
+            <span class="hw-label">DISK</span>
+            <div class="hw-gauge">
+                <div class="hw-gauge-fill" id="hwDiskBar" style="width:0%;background:#bc8cff"></div>
+                <div class="hw-gauge-text" id="hwDiskText">--%</div>
+            </div>
+        </div>
+        <div class="hw-item">
+            <span class="hw-label">NET</span>
+            <span class="hw-net-val" id="hwNetVal">↑-- ↓--</span>
+        </div>
+        <div class="hw-item" id="hwTempItem" style="display:none">
+            <span class="hw-label">TEMP</span>
+            <span class="hw-net-val" id="hwTempVal">--</span>
+        </div>
+        <div class="hw-item" style="margin-left:auto">
+            <span class="hw-spec" id="hwOsInfo">--</span>
+        </div>
+    </div>
+
+    <div class="main-area">
+        <div class="sidebar" id="sidebar">
+            <button class="add-tab-btn" id="addTabBtn" title="새 터미널">+</button>
+        </div>
+
+        <div class="terminal-panel" id="terminalPanel">
+        </div>
+    </div>
+
+    <div class="bottom-bar" id="bottomBar">
+        <div class="hint-bar">
+            <span id="contextHint">↑↓ = 터미널 이동 · Enter = 터미널 Enter · 타이핑하면 명령어 입력</span>
+            <span><kbd>Enter</kbd> 전송 · <kbd>Shift+Enter</kbd> 텍스트만 · <kbd>Ctrl+C</kbd> 인터럽트</span>
+        </div>
+        <div class="input-row">
+            <input type="text" id="cmdInput" placeholder="한글/명령어 입력..." autocomplete="off" spellcheck="false">
+            <button class="btn-send" id="sendBtn">전송</button>
+            <button class="btn-key" id="upBtn">↑</button>
+            <button class="btn-key" id="downBtn">↓</button>
+            <button class="btn-key" id="tabBtn">Tab</button>
+            <button class="btn-danger" id="ctrlCBtn">⌃C</button>
+        </div>
+    </div>
+
+    <script>
+        // =====================================================================
+        //  한글 터미널 — Split Pane + Browser Support
+        // =====================================================================
+
+        // === Global state ===
+        var tabs = new Map();
+        var activeTabId = null;
+        var tabCounter = 0;
+        var paneCounter = 0;
+        var focusedPaneId = null;   // currently focused leaf pane id
+
+        // All leaf panes indexed by paneId for quick lookup
+        var allPanes = new Map();
+
+        var terminalPanel = document.getElementById('terminalPanel');
+        var sidebar = document.getElementById('sidebar');
+        var addTabBtn = document.getElementById('addTabBtn');
+        var statusDot = document.getElementById('statusDot');
+        var statusText = document.getElementById('statusText');
+        var termTitle = document.getElementById('termTitle');
+        var contextHint = document.getElementById('contextHint');
+        var cmdInput = document.getElementById('cmdInput');
+        var bottomBar = document.getElementById('bottomBar');
+
+        // -----------------------------------------------------------------
+        //  Utility
+        // -----------------------------------------------------------------
+        function setStatus(connected) {
+            statusDot.classList.toggle('disconnected', !connected);
+            statusText.textContent = connected ? '연결됨' : '연결 끊김';
+        }
+
+        function getFocusedPane() {
+            return focusedPaneId ? allPanes.get(focusedPaneId) : null;
+        }
+
+        function send(data) {
+            var p = getFocusedPane();
+            if (p && p.paneType === 'terminal' && p.ws && p.ws.readyState === WebSocket.OPEN) {
+                p.ws.send(data);
+            }
+        }
+
+        function inputEmpty() { return cmdInput.value.length === 0; }
+
+        function updateHint() {
+            contextHint.textContent = inputEmpty()
+                ? '↑↓ = 터미널 이동 · Enter = 터미널 Enter · 타이핑하면 명령어 입력'
+                : 'Enter = 텍스트+Enter 전송 · Shift+Enter = 텍스트만 전송';
+        }
+
+        function updateBottomBar() {
+            var p = getFocusedPane();
+            if (p && p.paneType === 'browser') {
+                bottomBar.classList.add('disabled');
+            } else {
+                bottomBar.classList.remove('disabled');
+            }
+        }
+
+        // -----------------------------------------------------------------
+        //  Pane tree builder helpers
+        // -----------------------------------------------------------------
+        function createLeafNode(paneType) {
+            var id = ++paneCounter;
+            var node = {
+                type: 'leaf',
+                paneId: id,
+                paneType: paneType || 'terminal',
+                el: null,
+                // terminal state (only used when paneType === 'terminal')
+                ws: null,
+                screenEl: null,
+                scrollbackViewEl: null,
+                indicatorEl: null,
+                wrapperEl: null,
+                screenRows: 24,
+                screenCols: 80,
+                scrollbackMode: false,
+                scrollbackTotal: 0,
+                scrollbackLoaded: 0,
+                scrollbackLoading: false,
+                reconnectTimer: null,
+                isClosing: false,
+                lastState: null,
+                // browser state
+                iframeEl: null,
+                urlInput: null,
+                // parent ref
+                parent: null,
+                tabId: null,
+            };
+            allPanes.set(id, node);
+            return node;
+        }
+
+        function createSplitNode(direction, ratio, child1, child2) {
+            var node = {
+                type: 'split',
+                direction: direction,  // 'h' or 'v'
+                ratio: ratio || 0.5,
+                children: [child1, child2],
+                el: null,
+                parent: null,
+                tabId: null,
+            };
+            child1.parent = node;
+            child2.parent = node;
+            return node;
+        }
+
+        // -----------------------------------------------------------------
+        //  DOM builders for pane tree
+        // -----------------------------------------------------------------
+        function buildPaneDOM(node, tabId) {
+            node.tabId = tabId;
+            if (node.type === 'split') {
+                return buildSplitDOM(node, tabId);
+            } else {
+                return buildLeafDOM(node, tabId);
+            }
+        }
+
+        function buildSplitDOM(node, tabId) {
+            var container = document.createElement('div');
+            container.className = 'pane-split ' + (node.direction === 'h' ? 'horizontal' : 'vertical');
+            node.el = container;
+
+            var child1El = buildPaneDOM(node.children[0], tabId);
+            var handle = document.createElement('div');
+            handle.className = 'resize-handle ' + (node.direction === 'h' ? 'horizontal' : 'vertical');
+            var child2El = buildPaneDOM(node.children[1], tabId);
+
+            // Set initial sizes via flex
+            var r = node.ratio;
+            child1El.style.flex = r + ' 1 0%';
+            child2El.style.flex = (1 - r) + ' 1 0%';
+            child1El.style.overflow = 'hidden';
+            child2El.style.overflow = 'hidden';
+
+            container.appendChild(child1El);
+            container.appendChild(handle);
+            container.appendChild(child2El);
+
+            // Drag to resize
+            setupResizeHandle(handle, node);
+
+            return container;
+        }
+
+        function buildLeafDOM(node, tabId) {
+            var container = document.createElement('div');
+            container.className = 'pane-leaf';
+            container.dataset.paneId = node.paneId;
+            node.el = container;
+
+            // Header
+            var header = document.createElement('div');
+            header.className = 'pane-header';
+
+            var headerLeft = document.createElement('div');
+            headerLeft.className = 'pane-header-left';
+            var typeIcon = document.createElement('span');
+            typeIcon.textContent = node.paneType === 'terminal' ? '>_' : '\uD83C\uDF10';
+            typeIcon.className = 'pane-type-icon';
+            headerLeft.appendChild(typeIcon);
+
+            var headerRight = document.createElement('div');
+            headerRight.className = 'pane-header-right';
+
+            var btnSplitH = document.createElement('button');
+            btnSplitH.className = 'pane-header-btn';
+            btnSplitH.textContent = '\u2B13';
+            btnSplitH.title = '가로 분할';
+            btnSplitH.addEventListener('click', function(e) {
+                e.stopPropagation();
+                splitPane(node.paneId, 'h');
+            });
+
+            var btnSplitV = document.createElement('button');
+            btnSplitV.className = 'pane-header-btn';
+            btnSplitV.textContent = '\u2B14';
+            btnSplitV.title = '세로 분할';
+            btnSplitV.addEventListener('click', function(e) {
+                e.stopPropagation();
+                splitPane(node.paneId, 'v');
+            });
+
+            var btnToggle = document.createElement('button');
+            btnToggle.className = 'pane-header-btn';
+            btnToggle.textContent = node.paneType === 'terminal' ? '\uD83C\uDF10' : '>_';
+            btnToggle.title = '타입 전환';
+            btnToggle.addEventListener('click', function(e) {
+                e.stopPropagation();
+                togglePaneType(node.paneId);
+            });
+
+            var btnClose = document.createElement('button');
+            btnClose.className = 'pane-header-btn';
+            btnClose.textContent = '\u00d7';
+            btnClose.title = '패널 닫기';
+            btnClose.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closePane(node.paneId);
+            });
+
+            headerRight.appendChild(btnSplitH);
+            headerRight.appendChild(btnSplitV);
+            headerRight.appendChild(btnToggle);
+            headerRight.appendChild(btnClose);
+
+            header.appendChild(headerLeft);
+            header.appendChild(headerRight);
+            container.appendChild(header);
+
+            // Click to focus
+            container.addEventListener('mousedown', function(e) {
+                focusPane(node.paneId);
+            });
+
+            // Build content area based on pane type
+            if (node.paneType === 'terminal') {
+                buildTerminalContent(node, container);
+            } else {
+                buildBrowserContent(node, container);
+            }
+
+            return container;
+        }
+
+        function buildTerminalContent(node, container) {
+            var area = document.createElement('div');
+            area.className = 'pane-terminal-area';
+
+            var wrapperEl = document.createElement('div');
+            wrapperEl.className = 'terminal-wrapper';
+
+            var indicatorEl = document.createElement('div');
+            indicatorEl.className = 'scrollback-indicator';
+            indicatorEl.textContent = '\u2191 스크롤백 보기';
+
+            var scrollbackViewEl = document.createElement('div');
+            scrollbackViewEl.className = 'scrollback-view';
+
+            var screenEl = document.createElement('div');
+            screenEl.className = 'screen';
+
+            wrapperEl.appendChild(indicatorEl);
+            wrapperEl.appendChild(scrollbackViewEl);
+            wrapperEl.appendChild(screenEl);
+            area.appendChild(wrapperEl);
+            container.appendChild(area);
+
+            node.screenEl = screenEl;
+            node.scrollbackViewEl = scrollbackViewEl;
+            node.indicatorEl = indicatorEl;
+            node.wrapperEl = wrapperEl;
+
+            // Scrollback events
+            indicatorEl.addEventListener('click', function() {
+                if (node.scrollbackMode) exitScrollback(node);
+                else enterScrollback(node);
+            });
+            wrapperEl.addEventListener('wheel', function(e) {
+                if (e.deltaY < 0 && !node.scrollbackMode && node.scrollbackTotal > 0) {
+                    enterScrollback(node);
+                }
+            });
+            scrollbackViewEl.addEventListener('scroll', function() {
+                if (scrollbackViewEl.scrollTop < 100 && node.scrollbackLoaded < node.scrollbackTotal) {
+                    loadMoreScrollback(node);
+                }
+            });
+        }
+
+        function buildBrowserContent(node, container) {
+            var area = document.createElement('div');
+            area.className = 'pane-browser-area';
+
+            var urlBar = document.createElement('div');
+            urlBar.className = 'browser-url-bar';
+
+            var urlInput = document.createElement('input');
+            urlInput.className = 'browser-url-input';
+            urlInput.type = 'text';
+            urlInput.placeholder = 'URL 입력...';
+            urlInput.spellcheck = false;
+            urlInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var url = urlInput.value.trim();
+                    if (url && url.indexOf('://') === -1 && url.indexOf('about:') !== 0) {
+                        url = 'https://' + url;
+                    }
+                    if (url) {
+                        node.iframeEl.src = url;
+                    }
+                }
+            });
+            // Prevent bottom bar input stealing
+            urlInput.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+
+            urlBar.appendChild(urlInput);
+            area.appendChild(urlBar);
+
+            var iframe = document.createElement('iframe');
+            iframe.className = 'browser-iframe';
+            iframe.src = 'about:blank';
+            iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
+            area.appendChild(iframe);
+
+            container.appendChild(area);
+
+            node.iframeEl = iframe;
+            node.urlInput = urlInput;
+        }
+
+        // -----------------------------------------------------------------
+        //  Resize handle drag logic
+        // -----------------------------------------------------------------
+        function setupResizeHandle(handleEl, splitNode) {
+            var dragging = false;
+
+            handleEl.addEventListener('mousedown', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                dragging = true;
+                handleEl.classList.add('active');
+                var parentRect = splitNode.el.getBoundingClientRect();
+
+                function onMove(ev) {
+                    if (!dragging) return;
+                    var ratio;
+                    if (splitNode.direction === 'h') {
+                        ratio = (ev.clientY - parentRect.top) / parentRect.height;
+                    } else {
+                        ratio = (ev.clientX - parentRect.left) / parentRect.width;
+                    }
+                    ratio = Math.max(0.1, Math.min(0.9, ratio));
+                    splitNode.ratio = ratio;
+
+                    var c1 = splitNode.el.children[0];
+                    var c2 = splitNode.el.children[2];
+                    if (splitNode.direction === 'h') {
+                        c1.style.height = (ratio * 100) + '%';
+                        c2.style.height = ((1 - ratio) * 100) + '%';
+                    } else {
+                        c1.style.width = (ratio * 100) + '%';
+                        c2.style.width = ((1 - ratio) * 100) + '%';
+                    }
+                }
+
+                function onUp() {
+                    dragging = false;
+                    handleEl.classList.remove('active');
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    // Notify all terminal panes of size change
+                    resizeAllPanesInTab(splitNode.tabId);
+                }
+
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        }
+
+        // -----------------------------------------------------------------
+        //  Focus system
+        // -----------------------------------------------------------------
+        function focusPane(paneId) {
+            if (focusedPaneId === paneId) return;
+            // Remove old focus
+            if (focusedPaneId) {
+                var oldPane = allPanes.get(focusedPaneId);
+                if (oldPane && oldPane.el) {
+                    oldPane.el.classList.remove('focused');
+                }
+            }
+            focusedPaneId = paneId;
+            var pane = allPanes.get(paneId);
+            if (pane && pane.el) {
+                pane.el.classList.add('focused');
+            }
+            // Update status bar
+            if (pane) {
+                if (pane.paneType === 'terminal') {
+                    var connected = pane.ws && pane.ws.readyState === WebSocket.OPEN;
+                    setStatus(connected);
+                } else {
+                    setStatus(true);
+                }
+            }
+            updateBottomBar();
+        }
+
+        // -----------------------------------------------------------------
+        //  Split pane
+        // -----------------------------------------------------------------
+        function splitPane(paneId, direction) {
+            var pane = allPanes.get(paneId);
+            if (!pane) return;
+            var tab = tabs.get(pane.tabId);
+            if (!tab) return;
+
+            // Create new leaf (terminal by default)
+            var newLeaf = createLeafNode('terminal');
+            newLeaf.tabId = pane.tabId;
+
+            // Create a split node replacing the current pane
+            var splitNode = createSplitNode(direction, 0.5, pane, newLeaf);
+            splitNode.tabId = pane.tabId;
+
+            // Replace in tree
+            if (pane.parent) {
+                // pane is child of a split
+                var parentSplit = pane.parent;
+                var idx = parentSplit.children.indexOf(pane);
+                parentSplit.children[idx] = splitNode;
+                splitNode.parent = parentSplit;
+            } else {
+                // pane is root
+                tab.paneRoot = splitNode;
+                splitNode.parent = null;
+            }
+            pane.parent = splitNode;
+            newLeaf.parent = splitNode;
+
+            // Rebuild entire tab DOM (simplest approach)
+            rebuildTabDOM(tab);
+
+            // Connect the new terminal pane
+            if (newLeaf.paneType === 'terminal') {
+                setTimeout(function() { connectPane(newLeaf); }, 200);
+            }
+
+            focusPane(newLeaf.paneId);
+        }
+
+        // -----------------------------------------------------------------
+        //  Close pane
+        // -----------------------------------------------------------------
+        function closePane(paneId) {
+            var pane = allPanes.get(paneId);
+            if (!pane) return;
+            var tab = tabs.get(pane.tabId);
+            if (!tab) return;
+
+            // If this is the only pane in the tab, don't close it
+            if (tab.paneRoot === pane) return;
+
+            // Disconnect terminal if needed
+            destroyPaneResources(pane);
+
+            // Remove from tree: replace parent split with sibling
+            var parentSplit = pane.parent;
+            if (!parentSplit || parentSplit.type !== 'split') return;
+
+            var siblingIdx = parentSplit.children[0] === pane ? 1 : 0;
+            var sibling = parentSplit.children[siblingIdx];
+
+            if (parentSplit.parent) {
+                var grandParent = parentSplit.parent;
+                var gpIdx = grandParent.children.indexOf(parentSplit);
+                grandParent.children[gpIdx] = sibling;
+                sibling.parent = grandParent;
+            } else {
+                tab.paneRoot = sibling;
+                sibling.parent = null;
+            }
+
+            rebuildTabDOM(tab);
+
+            // Focus sibling or first leaf
+            var firstLeaf = findFirstLeaf(sibling);
+            if (firstLeaf) focusPane(firstLeaf.paneId);
+        }
+
+        function destroyPaneResources(node) {
+            if (node.type === 'split') {
+                destroyPaneResources(node.children[0]);
+                destroyPaneResources(node.children[1]);
+                return;
+            }
+            // Leaf
+            node.isClosing = true;
+            clearTimeout(node.reconnectTimer);
+            if (node.ws) { node.ws.onclose = null; node.ws.close(); node.ws = null; }
+            allPanes.delete(node.paneId);
+        }
+
+        function findFirstLeaf(node) {
+            if (node.type === 'leaf') return node;
+            return findFirstLeaf(node.children[0]);
+        }
+
+        // -----------------------------------------------------------------
+        //  Toggle pane type
+        // -----------------------------------------------------------------
+        function togglePaneType(paneId) {
+            var pane = allPanes.get(paneId);
+            if (!pane) return;
+            var tab = tabs.get(pane.tabId);
+            if (!tab) return;
+
+            // Destroy existing resources
+            if (pane.paneType === 'terminal') {
+                pane.isClosing = true;
+                clearTimeout(pane.reconnectTimer);
+                if (pane.ws) { pane.ws.onclose = null; pane.ws.close(); pane.ws = null; }
+                pane.paneType = 'browser';
+                pane.isClosing = false;
+                pane.lastState = null;
+                pane.scrollbackMode = false;
+                pane.scrollbackTotal = 0;
+                pane.scrollbackLoaded = 0;
+            } else {
+                pane.paneType = 'terminal';
+                pane.iframeEl = null;
+                pane.urlInput = null;
+                pane.lastState = null;
+                pane.ws = null;
+            }
+
+            rebuildTabDOM(tab);
+
+            if (pane.paneType === 'terminal') {
+                setTimeout(function() { connectPane(pane); }, 200);
+            }
+
+            focusPane(pane.paneId);
+            updateBottomBar();
+        }
+
+        // -----------------------------------------------------------------
+        //  Rebuild tab DOM from pane tree
+        // -----------------------------------------------------------------
+        function rebuildTabDOM(tab) {
+            var contentEl = tab.contentEl;
+            while (contentEl.firstChild) contentEl.removeChild(contentEl.firstChild);
+            var domTree = buildPaneDOM(tab.paneRoot, tab.id);
+            domTree.style.width = '100%';
+            domTree.style.height = '100%';
+            contentEl.appendChild(domTree);
+
+            // Re-apply focus visual
+            if (focusedPaneId) {
+                var fp = allPanes.get(focusedPaneId);
+                if (fp && fp.el) fp.el.classList.add('focused');
+            }
+
+            // Resize all terminal panes after DOM settles
+            setTimeout(function() { resizeAllPanesInTab(tab.id); }, 50);
+        }
+
+        // -----------------------------------------------------------------
+        //  Iterate all leaf panes in a subtree
+        // -----------------------------------------------------------------
+        function forEachLeaf(node, fn) {
+            if (node.type === 'leaf') { fn(node); return; }
+            forEachLeaf(node.children[0], fn);
+            forEachLeaf(node.children[1], fn);
+        }
+
+        // -----------------------------------------------------------------
+        //  Resize all terminal panes in a tab
+        // -----------------------------------------------------------------
+        function resizeAllPanesInTab(tabId) {
+            var tab = tabs.get(tabId);
+            if (!tab) return;
+            forEachLeaf(tab.paneRoot, function(pane) {
+                if (pane.paneType === 'terminal') {
+                    resizePane(pane);
+                }
+            });
+        }
+
+        function resizePane(pane) {
+            if (!pane.wrapperEl || !pane.wrapperEl.parentNode || pane.paneType !== 'terminal') return;
+            var dims = calcPaneDimensions(pane.wrapperEl);
+            if (dims.rows !== pane.screenRows || dims.cols !== pane.screenCols) {
+                pane.screenRows = dims.rows;
+                pane.screenCols = dims.cols;
+                if (pane.ws && pane.ws.readyState === WebSocket.OPEN) {
+                    pane.ws.send('\x01RESIZE:' + dims.rows + ',' + dims.cols);
+                }
+            }
+        }
+
+        function calcPaneDimensions(wrapperEl) {
+            if (!wrapperEl || wrapperEl.clientHeight === 0) return { rows: 24, cols: 80 };
+            var testEl = document.createElement('span');
+            testEl.style.cssText = "font-family:'D2Coding','Noto Sans Mono CJK KR','Menlo','Monaco',monospace;font-size:14px;line-height:1.35;position:absolute;visibility:hidden;white-space:pre;";
+            testEl.textContent = 'X';
+            document.body.appendChild(testEl);
+            var charW = testEl.offsetWidth;
+            var charH = testEl.offsetHeight;
+            document.body.removeChild(testEl);
+            var w = wrapperEl.clientWidth - 16;
+            var h = wrapperEl.clientHeight;
+            return { rows: Math.max(1, Math.floor(h / charH)), cols: Math.max(1, Math.floor(w / charW)) };
+        }
+
+        // -----------------------------------------------------------------
+        //  Connect WebSocket for a terminal pane
+        // -----------------------------------------------------------------
+        function connectPane(pane) {
+            if (pane.isClosing || pane.paneType !== 'terminal') return;
+            if (pane.ws) { pane.ws.onclose = null; pane.ws.close(); }
+
+            var protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            pane.ws = new WebSocket(protocol + '//' + location.host + '/ws');
+
+            pane.ws.onopen = function() {
+                // Update tab status dot
+                updateTabStatusDot(pane.tabId);
+                if (pane.paneId === focusedPaneId) setStatus(true);
+                var dims = calcPaneDimensions(pane.wrapperEl);
+                pane.screenRows = dims.rows;
+                pane.screenCols = dims.cols;
+                pane.ws.send('\x01INIT:' + dims.rows + ',' + dims.cols);
+                cmdInput.focus();
+            };
+
+            pane.ws.onmessage = function(event) {
+                try {
+                    var data = JSON.parse(event.data);
+                    if (data.scrollback) {
+                        renderScrollbackData(pane, data);
+                    } else if (data.error) {
+                        console.error('Server error:', data.error);
+                    } else {
+                        pane.scrollbackTotal = data.scrollback_count || 0;
+                        pane.lastState = data;
+                        if (!pane.scrollbackMode) renderScreen(pane, data);
+                        if (pane.paneId === focusedPaneId) updateScrollbackIndicator(pane);
+                    }
+                } catch (e) {
+                    console.error('Parse error:', e);
+                }
+            };
+
+            pane.ws.onclose = function() {
+                updateTabStatusDot(pane.tabId);
+                if (pane.paneId === focusedPaneId) setStatus(false);
+                pane.ws = null;
+                if (!pane.isClosing) {
+                    pane.reconnectTimer = setTimeout(function() { connectPane(pane); }, 2000);
+                }
+            };
+
+            pane.ws.onerror = function() { if (pane.ws) pane.ws.close(); };
+        }
+
+        function updateTabStatusDot(tabId) {
+            var tab = tabs.get(tabId);
+            if (!tab) return;
+            // Tab is "alive" if any terminal pane is connected
+            var anyConnected = false;
+            forEachLeaf(tab.paneRoot, function(p) {
+                if (p.paneType === 'terminal' && p.ws && p.ws.readyState === WebSocket.OPEN) {
+                    anyConnected = true;
+                }
+            });
+            tab.tabStatusDot.className = anyConnected ? 'tab-status' : 'tab-status dead';
+        }
+
+        // -----------------------------------------------------------------
+        //  Render screen
+        // -----------------------------------------------------------------
+        function renderScreen(pane, state) {
+            var lines = state.lines;
+            var cursor = state.cursor;
+            var title = state.title;
+            if (title && pane.paneId === focusedPaneId) {
+                termTitle.textContent = title || ('\uD130\uBBF8\uB110 ' + pane.paneId);
+            }
+
+            var el = pane.screenEl;
+            if (!el) return;
+            while (el.firstChild) el.removeChild(el.firstChild);
+
+            for (var r = 0; r < lines.length; r++) {
+                var lineDiv = document.createElement('div');
+                lineDiv.className = 'line';
+                var col = 0;
+
+                for (var s = 0; s < lines[r].length; s++) {
+                    var span = lines[r][s];
+                    var text = span.t;
+                    if (r === cursor.row && cursor.col >= col && cursor.col < col + text.length) {
+                        var offset = cursor.col - col;
+                        if (offset > 0) lineDiv.appendChild(createSpan(text.slice(0, offset), span));
+                        var cs = createSpan(text[offset] || ' ', span);
+                        cs.classList.add('cursor-cell');
+                        lineDiv.appendChild(cs);
+                        if (offset + 1 < text.length) lineDiv.appendChild(createSpan(text.slice(offset + 1), span));
+                    } else {
+                        lineDiv.appendChild(createSpan(text, span));
+                    }
+                    col += text.length;
+                }
+
+                if (r === cursor.row && col <= cursor.col) {
+                    if (cursor.col - col > 0) {
+                        var pad = document.createElement('span');
+                        pad.textContent = ' '.repeat(cursor.col - col);
+                        lineDiv.appendChild(pad);
+                    }
+                    var cursorSpan = document.createElement('span');
+                    cursorSpan.className = 'cursor-cell';
+                    cursorSpan.textContent = ' ';
+                    lineDiv.appendChild(cursorSpan);
+                }
+                el.appendChild(lineDiv);
+            }
+        }
+
+        function createSpan(text, span) {
+            var el = document.createElement('span');
+            el.textContent = text;
+            var fg = span.fg || null;
+            var bg = span.bg || null;
+            if (span.inv) { var tmp = fg; fg = bg || '#0d1117'; bg = tmp || '#c9d1d9'; }
+            if (fg) el.style.color = fg;
+            if (bg) el.style.backgroundColor = bg;
+            if (span.b) el.style.fontWeight = 'bold';
+            if (span.d) el.style.opacity = '0.6';
+            if (span.i) el.style.fontStyle = 'italic';
+            var deco = [];
+            if (span.u) deco.push('underline');
+            if (span.s) deco.push('line-through');
+            if (deco.length) el.style.textDecoration = deco.join(' ');
+            return el;
+        }
+
+        // -----------------------------------------------------------------
+        //  Scrollback
+        // -----------------------------------------------------------------
+        function updateScrollbackIndicator(pane) {
+            if (!pane.indicatorEl) return;
+            if (pane.scrollbackTotal > 0 && !pane.scrollbackMode) {
+                pane.indicatorEl.textContent = '\u2191 히스토리 ' + pane.scrollbackTotal + '줄';
+                pane.indicatorEl.style.display = 'block';
+            } else if (!pane.scrollbackMode) {
+                pane.indicatorEl.style.display = 'none';
+            }
+        }
+
+        function enterScrollback(pane) {
+            if (pane.scrollbackMode || pane.scrollbackTotal === 0) return;
+            pane.scrollbackMode = true;
+            pane.scrollbackLoaded = 0;
+            pane.screenEl.style.display = 'none';
+            pane.scrollbackViewEl.style.display = 'block';
+            while (pane.scrollbackViewEl.firstChild) pane.scrollbackViewEl.removeChild(pane.scrollbackViewEl.firstChild);
+            pane.indicatorEl.textContent = '\u2193 현재 화면으로 돌아가기';
+            pane.indicatorEl.style.display = 'block';
+            loadMoreScrollback(pane);
+        }
+
+        function exitScrollback(pane) {
+            pane.scrollbackMode = false;
+            pane.scrollbackViewEl.style.display = 'none';
+            pane.screenEl.style.display = 'block';
+            while (pane.scrollbackViewEl.firstChild) pane.scrollbackViewEl.removeChild(pane.scrollbackViewEl.firstChild);
+            pane.scrollbackLoaded = 0;
+            updateScrollbackIndicator(pane);
+        }
+
+        function loadMoreScrollback(pane) {
+            if (pane.scrollbackLoading || pane.scrollbackLoaded >= pane.scrollbackTotal) return;
+            pane.scrollbackLoading = true;
+            if (pane.ws && pane.ws.readyState === WebSocket.OPEN) {
+                pane.ws.send('\x01SCROLLBACK:' + pane.scrollbackLoaded + ',50');
+            }
+        }
+
+        function renderScrollbackData(pane, data) {
+            pane.scrollbackLoading = false;
+            var scrollback = data.scrollback;
+            var offset = data.offset;
+            var total = data.total;
+            pane.scrollbackTotal = total;
+            var frag = document.createDocumentFragment();
+            for (var i = 0; i < scrollback.length; i++) {
+                var lineDiv = document.createElement('div');
+                lineDiv.className = 'line';
+                for (var j = 0; j < scrollback[i].length; j++) {
+                    lineDiv.appendChild(createSpan(scrollback[i][j].t, scrollback[i][j]));
+                }
+                frag.appendChild(lineDiv);
+            }
+            pane.scrollbackViewEl.insertBefore(frag, pane.scrollbackViewEl.firstChild);
+            pane.scrollbackLoaded = offset + scrollback.length;
+            if (offset === 0) pane.scrollbackViewEl.scrollTop = pane.scrollbackViewEl.scrollHeight;
+        }
+
+        // -----------------------------------------------------------------
+        //  Tab management
+        // -----------------------------------------------------------------
+        function createTab() {
+            var id = ++tabCounter;
+
+            // Create tab content container
+            var contentEl = document.createElement('div');
+            contentEl.className = 'tab-content';
+            contentEl.dataset.tabId = id;
+            terminalPanel.appendChild(contentEl);
+
+            // Create initial leaf pane
+            var rootPane = createLeafNode('terminal');
+            rootPane.tabId = id;
+
+            // Sidebar tab button
+            var tabBtn = document.createElement('button');
+            tabBtn.className = 'tab-btn';
+            tabBtn.dataset.tabId = id;
+            tabBtn.title = '터미널 ' + id;
+            tabBtn.textContent = id;
+
+            var tabStatusDot = document.createElement('span');
+            tabStatusDot.className = 'tab-status';
+            tabBtn.appendChild(tabStatusDot);
+
+            var closeBtn = document.createElement('button');
+            closeBtn.className = 'tab-btn-close';
+            closeBtn.textContent = '\u00d7';
+            closeBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                closeTab(id);
+            });
+            tabBtn.appendChild(closeBtn);
+
+            tabBtn.addEventListener('click', function() { switchTab(id); });
+            sidebar.insertBefore(tabBtn, addTabBtn);
+
+            var tab = {
+                id: id,
+                contentEl: contentEl,
+                paneRoot: rootPane,
+                tabBtn: tabBtn,
+                tabStatusDot: tabStatusDot,
+            };
+            tabs.set(id, tab);
+
+            // Build DOM from pane tree
+            var domTree = buildPaneDOM(rootPane, id);
+            domTree.style.width = '100%';
+            domTree.style.height = '100%';
+            contentEl.appendChild(domTree);
+
+            // Switch to new tab
+            switchTab(id);
+
+            // Connect terminal pane after layout settles
+            setTimeout(function() {
+                forEachLeaf(rootPane, function(p) {
+                    if (p.paneType === 'terminal') connectPane(p);
+                });
+            }, 200);
+
+            return id;
+        }
+
+        function switchTab(id) {
+            activeTabId = id;
+            tabs.forEach(function(t, tid) {
+                if (tid === id) {
+                    t.contentEl.classList.add('active');
+                    t.tabBtn.classList.add('active');
+                } else {
+                    t.contentEl.classList.remove('active');
+                    t.tabBtn.classList.remove('active');
+                }
+            });
+
+            var tab = tabs.get(id);
+            if (tab) {
+                termTitle.textContent = '터미널 ' + id;
+                updateTabStatusDot(id);
+
+                // Focus first leaf in this tab
+                var firstLeaf = findFirstLeaf(tab.paneRoot);
+                if (firstLeaf) {
+                    focusPane(firstLeaf.paneId);
+
+                    // Re-render cached state for focused terminal
+                    if (firstLeaf.paneType === 'terminal' && firstLeaf.lastState && !firstLeaf.scrollbackMode) {
+                        renderScreen(firstLeaf, firstLeaf.lastState);
+                    }
+
+                    // Request fresh state from all connected terminals
+                    forEachLeaf(tab.paneRoot, function(p) {
+                        if (p.paneType === 'terminal' && p.ws && p.ws.readyState === WebSocket.OPEN) {
+                            p.ws.send('\x01REFRESH');
+                        }
+                    });
+                }
+
+                // Resize all panes
+                setTimeout(function() { resizeAllPanesInTab(id); }, 50);
+            }
+            cmdInput.focus();
+        }
+
+        function closeTab(id) {
+            var tab = tabs.get(id);
+            if (!tab) return;
+            if (tabs.size <= 1) return;
+
+            // Destroy all panes in this tab
+            destroyPaneResources(tab.paneRoot);
+
+            tab.contentEl.remove();
+            tab.tabBtn.remove();
+            tabs.delete(id);
+
+            if (activeTabId === id) {
+                var nextId = tabs.keys().next().value;
+                switchTab(nextId);
+            }
+        }
+
+        // -----------------------------------------------------------------
+        //  Input handling
+        // -----------------------------------------------------------------
+        var cmdHistory = [];
+        var historyIndex = -1;
+
+        cmdInput.addEventListener('input', updateHint);
+        cmdInput.addEventListener('keydown', function(e) {
+            // If focused pane is browser, ignore terminal input
+            var fp = getFocusedPane();
+            if (fp && fp.paneType === 'browser') return;
+
+            if (inputEmpty() && !e.isComposing) {
+                if (e.key === 'Enter') { e.preventDefault(); send('\r'); return; }
+                if (e.key === 'ArrowUp') { e.preventDefault(); send('\x1b[A'); return; }
+                if (e.key === 'ArrowDown') { e.preventDefault(); send('\x1b[B'); return; }
+                if (e.key === 'ArrowLeft') { e.preventDefault(); send('\x1b[D'); return; }
+                if (e.key === 'ArrowRight') { e.preventDefault(); send('\x1b[C'); return; }
+                if (e.key === 'Tab') { e.preventDefault(); send('\t'); return; }
+            }
+            if (e.key === 'Enter' && !e.isComposing) {
+                e.preventDefault();
+                var cmd = cmdInput.value;
+                if (cmd) { cmdHistory.unshift(cmd); if (cmdHistory.length > 100) cmdHistory.pop(); }
+                historyIndex = -1;
+                send(e.shiftKey ? cmd : cmd + '\r');
+                cmdInput.value = ''; updateHint(); return;
+            }
+            if (e.key === 'ArrowUp' && !e.isComposing) {
+                e.preventDefault();
+                if (historyIndex < cmdHistory.length - 1) {
+                    historyIndex++;
+                    cmdInput.value = cmdHistory[historyIndex];
+                    setTimeout(function() { cmdInput.setSelectionRange(cmdInput.value.length, cmdInput.value.length); }, 0);
+                    updateHint();
+                }
+                return;
+            }
+            if (e.key === 'ArrowDown' && !e.isComposing) {
+                e.preventDefault();
+                if (historyIndex > 0) { historyIndex--; cmdInput.value = cmdHistory[historyIndex]; }
+                else { historyIndex = -1; cmdInput.value = ''; }
+                updateHint(); return;
+            }
+            if (e.key === 'c' && e.ctrlKey) { send('\x03'); return; }
+            if (e.key === 'l' && e.ctrlKey) { e.preventDefault(); send('clear\r'); return; }
+            if (e.key === 'd' && e.ctrlKey) { e.preventDefault(); send('\x04'); return; }
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                send(cmdInput.value + '\t');
+                cmdInput.value = ''; updateHint();
+            }
+            if (e.key === 'Escape') {
+                var p = getFocusedPane();
+                if (p && p.paneType === 'terminal' && p.scrollbackMode) exitScrollback(p);
+            }
+        });
+
+        // === Buttons ===
+        document.getElementById('sendBtn').addEventListener('click', function() {
+            var cmd = cmdInput.value;
+            if (cmd) { cmdHistory.unshift(cmd); if (cmdHistory.length > 100) cmdHistory.pop(); }
+            historyIndex = -1;
+            send(cmd + '\r');
+            cmdInput.value = ''; updateHint(); cmdInput.focus();
+        });
+        document.getElementById('upBtn').addEventListener('click', function() { send('\x1b[A'); cmdInput.focus(); });
+        document.getElementById('downBtn').addEventListener('click', function() { send('\x1b[B'); cmdInput.focus(); });
+        document.getElementById('tabBtn').addEventListener('click', function() { send('\t'); cmdInput.focus(); });
+        document.getElementById('ctrlCBtn').addEventListener('click', function() { send('\x03'); cmdInput.focus(); });
+
+        // === Add tab button ===
+        addTabBtn.addEventListener('click', function() { createTab(); });
+
+        // === Global resize ===
+        function handleResize() {
+            if (activeTabId) {
+                resizeAllPanesInTab(activeTabId);
+            }
+        }
+        window.addEventListener('resize', handleResize);
+
+        // === Click to focus input (if not on interactive element) ===
+        document.addEventListener('click', function(e) {
+            if (!e.target.closest('button') && !e.target.closest('.sidebar')
+                && !e.target.closest('.browser-url-input') && !e.target.closest('iframe')) {
+                var fp = getFocusedPane();
+                if (!fp || fp.paneType === 'terminal') {
+                    cmdInput.focus();
+                }
+            }
+        });
+
+        // === Cleanup ===
+        window.addEventListener('beforeunload', function() {
+            allPanes.forEach(function(p) {
+                p.isClosing = true;
+                if (p.ws) p.ws.close();
+            });
+        });
+
+        // -----------------------------------------------------------------
+        //  Hardware Monitor (unchanged)
+        // -----------------------------------------------------------------
+        var prevNet = { sent: 0, recv: 0 };
+        function barColor(pct) {
+            if (pct < 50) return '#3fb950';
+            if (pct < 80) return '#d29922';
+            return '#f85149';
+        }
+        function updateHwInfo() {
+            fetch('/api/sysinfo').then(function(res) { return res.json(); }).then(function(d) {
+                // CPU
+                document.getElementById('hwCpuSpec').textContent =
+                    d.cpu.cores_physical + 'C/' + d.cpu.cores_logical + 'T';
+                var cpuBar = document.getElementById('hwCpuBar');
+                cpuBar.style.width = d.cpu.percent + '%';
+                cpuBar.style.background = barColor(d.cpu.percent);
+                document.getElementById('hwCpuText').textContent =
+                    padPct(d.cpu.percent) + '%';
+
+                // MEM
+                document.getElementById('hwMemSpec').textContent =
+                    d.memory.total_gb + 'GB';
+                var memBar = document.getElementById('hwMemBar');
+                memBar.style.width = d.memory.percent + '%';
+                memBar.style.background = barColor(d.memory.percent);
+                document.getElementById('hwMemText').textContent =
+                    d.memory.used_gb + '/' + d.memory.total_gb + 'GB (' + padPct(d.memory.percent) + '%)';
+
+                // DISK
+                var diskBar = document.getElementById('hwDiskBar');
+                diskBar.style.width = d.disk.percent + '%';
+                diskBar.style.background = barColor(d.disk.percent);
+                document.getElementById('hwDiskText').textContent =
+                    d.disk.used_gb + '/' + d.disk.total_gb + 'GB (' + padPct(d.disk.percent) + '%)';
+
+                // NET
+                var sentDelta = d.network.sent_mb - prevNet.sent;
+                var recvDelta = d.network.recv_mb - prevNet.recv;
+                document.getElementById('hwNetVal').textContent = prevNet.sent > 0
+                    ? '\u2191' + sentDelta.toFixed(1) + 'MB/s \u2193' + recvDelta.toFixed(1) + 'MB/s'
+                    : '\u2191' + d.network.sent_mb + 'MB \u2193' + d.network.recv_mb + 'MB';
+                prevNet = { sent: d.network.sent_mb, recv: d.network.recv_mb };
+
+                // TEMP
+                var tempKeys = Object.keys(d.temps);
+                if (tempKeys.length > 0) {
+                    var temp = d.temps[tempKeys[0]];
+                    document.getElementById('hwTempItem').style.display = '';
+                    var tempEl = document.getElementById('hwTempVal');
+                    tempEl.textContent = temp.toFixed(0) + '\u00b0C';
+                    tempEl.style.color = temp > 80 ? '#f85149' : temp > 60 ? '#d29922' : '#c9d1d9';
+                }
+
+                // OS
+                document.getElementById('hwOsInfo').textContent = d.hostname + ' \u00b7 ' + d.os;
+            }).catch(function() {});
+        }
+
+        function padPct(n) {
+            var s = n.toFixed(1);
+            while (s.length < 5) s = ' ' + s;
+            return s;
+        }
+        updateHwInfo();
+        setInterval(updateHwInfo, 2000);
+
+        // -----------------------------------------------------------------
+        //  ResizeObserver
+        // -----------------------------------------------------------------
+        function setupResizeObserver() {
+            if (typeof ResizeObserver === 'undefined') return;
+            var panel = document.getElementById('terminalPanel');
+            if (panel) {
+                new ResizeObserver(function() { handleResize(); }).observe(panel);
+            }
+        }
+
+        // -----------------------------------------------------------------
+        //  Start: create first tab
+        // -----------------------------------------------------------------
+        createTab();
+        setupResizeObserver();
+        updateHint();
+    </script>
+</body>
+</html>

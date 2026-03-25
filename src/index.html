@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>한글 터미널</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Title Bar -->
+    <div class="titlebar" style="-webkit-app-region: drag;">
+        <span class="title" id="termTitle">한글 터미널</span>
+        <div class="status" style="-webkit-app-region: no-drag;">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">준비</span>
+        </div>
+    </div>
+
+    <!-- Hardware Bar -->
+    <div class="hw-bar" id="hwBar">
+        <div class="hw-item">
+            <span class="hw-label">CPU</span>
+            <span class="hw-spec" id="hwCpuSpec">--</span>
+            <div class="hw-gauge">
+                <div class="hw-gauge-fill" id="hwCpuBar"></div>
+                <div class="hw-gauge-text" id="hwCpuText">--%</div>
+            </div>
+        </div>
+        <div class="hw-item">
+            <span class="hw-label">MEM</span>
+            <span class="hw-spec" id="hwMemSpec">--</span>
+            <div class="hw-gauge">
+                <div class="hw-gauge-fill" id="hwMemBar"></div>
+                <div class="hw-gauge-text" id="hwMemText">--%</div>
+            </div>
+        </div>
+        <div class="hw-item">
+            <span class="hw-label">DISK</span>
+            <div class="hw-gauge">
+                <div class="hw-gauge-fill" id="hwDiskBar"></div>
+                <div class="hw-gauge-text" id="hwDiskText">--%</div>
+            </div>
+        </div>
+        <div class="hw-item">
+            <span class="hw-label">NET</span>
+            <span class="hw-net-val" id="hwNetVal">-- --</span>
+        </div>
+        <div class="hw-item" style="margin-left:auto">
+            <span class="hw-spec" id="hwOsInfo">--</span>
+        </div>
+    </div>
+
+    <!-- Main Area -->
+    <div class="main-area">
+        <!-- Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <button class="add-tab-btn" id="addTabBtn" title="새 터미널">+</button>
+        </div>
+
+        <!-- Terminal Panel -->
+        <div class="terminal-panel" id="terminalPanel"></div>
+    </div>
+
+
+    <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css">
+    <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script src="../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+    <script src="../node_modules/lucide/dist/umd/lucide.min.js"></script>
+    <style>
+      /* xterm fills pane */
+      .pane-terminal-area { flex: 1; overflow: hidden; background: #0d1117; padding: 2px; }
+      .pane-terminal-area .xterm { height: 100%; }
+    </style>
+    <script src="utils.js"></script>
+    <script src="pane.js"></script>
+    <script src="tabs.js"></script>
+    <script src="split.js"></script>
+    <script src="dir-autocomplete.js"></script>
+    <script src="hw-monitor.js"></script>
+    <script src="renderer.js"></script>
+</body>
+</html>

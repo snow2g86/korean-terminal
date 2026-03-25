@@ -1,0 +1,60 @@
+{
+  "name": "korean-terminal",
+  "version": "1.0.0",
+  "description": "한글 터미널 - 데스크톱 터미널 에뮬레이터",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "restart": "pkill -f Electron.app; sleep 1; electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "com.korean-terminal",
+    "productName": "한글 터미널",
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "node_modules/**/*"
+    ]
+  },
+  "keywords": [
+    "terminal",
+    "korean",
+    "electron"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/xterm": "^6.0.0",
+    "ansi_up": "^6.0.6",
+    "electron": "^41.0.3",
+    "electron-store": "^11.0.2",
+    "lucide": "^1.6.0",
+    "node-pty": "^1.1.0",
+    "systeminformation": "^5.31.5"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3"
+  }
+}

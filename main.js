@@ -1,0 +1,208 @@
+const { app, BrowserWindow, ipcMain } = require('electron');
+const path = require('path');
+const os = require('os');
+const fs = require('fs');
+const pty = require('node-pty');
+const si = require('systeminformation');
+
+// PTY sessions: id -> { pty, cols, rows }
+const sessions = new Map();
+let sessionCounter = 0;
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1200,
+    height: 800,
+    minWidth: 600,
+    minHeight: 400,
+    title: '한글 터미널',
+    titleBarStyle: 'hiddenInset',
+    backgroundColor: '#0d1117',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  win.loadFile(path.join(__dirname, 'src', 'index.html'));
+}
+
+// --- PTY IPC Handlers ---
+
+ipcMain.handle('pty:create', (event, { cols, rows }) => {
+  const id = ++sessionCounter;
+  const shell = process.env.SHELL || '/bin/zsh';
+  const env = Object.assign({}, process.env, {
+    TERM: 'xterm-256color',
+    LANG: 'ko_KR.UTF-8',
+    LC_ALL: 'ko_KR.UTF-8',
+  });
+
+  const ptyProcess = pty.spawn(shell, ['-l'], {
+    name: 'xterm-256color',
+    cols: cols || 80,
+    rows: rows || 24,
+    cwd: process.env.HOME || os.homedir(),
+    env: env,
+  });
+
+  sessions.set(id, { pty: ptyProcess, cols: cols || 80, rows: rows || 24 });
+
+  // Forward PTY output to renderer
+  ptyProcess.onData((data) => {
+    event.sender.send('pty:data', { id, data });
+  });
+
+  ptyProcess.onExit(({ exitCode }) => {
+    sessions.delete(id);
+    event.sender.send('pty:exit', { id, exitCode });
+  });
+
+  return id;
+});
+
+ipcMain.on('pty:write', (event, { id, data }) => {
+  const session = sessions.get(id);
+  if (session) session.pty.write(data);
+});
+
+ipcMain.on('pty:resize', (event, { id, cols, rows }) => {
+  const session = sessions.get(id);
+  if (session) {
+    session.pty.resize(cols, rows);
+    session.cols = cols;
+    session.rows = rows;
+  }
+});
+
+ipcMain.on('pty:destroy', (event, { id }) => {
+  const session = sessions.get(id);
+  if (session) {
+    session.pty.kill();
+    sessions.delete(id);
+  }
+});
+
+// --- Directory listing IPC ---
+
+ipcMain.handle('fs:listDir', async (event, { dir, filter, onlyDirs }) => {
+  try {
+    var targetDir = dir || os.homedir();
+    var entries = fs.readdirSync(targetDir, { withFileTypes: true });
+    var result = [];
+    for (var i = 0; i < entries.length; i++) {
+      var e = entries[i];
+      if (e.name.startsWith('.') && (!filter || !filter.startsWith('.'))) continue;
+      var isDir = false;
+      try { isDir = e.isDirectory(); } catch(err) {}
+      if (onlyDirs && !isDir) continue;
+      result.push({
+        name: e.name,
+        isDir: isDir,
+        path: path.join(targetDir, e.name),
+      });
+    }
+    result.sort(function(a, b) {
+      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+    if (filter) {
+      var f = filter.toLowerCase();
+      result = result.filter(function(item) {
+        return item.name.toLowerCase().indexOf(f) === 0;
+      });
+    }
+    return { entries: result, dir: targetDir };
+  } catch (err) {
+    return { entries: [], dir: dir || '', error: err.message };
+  }
+});
+
+ipcMain.handle('pty:getCwd', async (event, { id }) => {
+  var session = sessions.get(id);
+  if (!session) return os.homedir();
+  try {
+    var { execFileSync } = require('child_process');
+    var pid = session.pty.pid;
+    var output = execFileSync('lsof', ['-p', String(pid), '-Fn'], { encoding: 'utf8', timeout: 2000 });
+    var lines = output.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i] === 'fcwd' && lines[i + 1] && lines[i + 1].startsWith('n/')) {
+        return lines[i + 1].substring(1);
+      }
+    }
+    return os.homedir();
+  } catch (e) {
+    return os.homedir();
+  }
+});
+
+// --- System Info IPC ---
+
+ipcMain.handle('sysinfo', async () => {
+  const { execFileSync } = require('child_process');
+  const [cpu, cpuLoad, mem, net, osInfo] = await Promise.all([
+    si.cpu(),
+    si.currentLoad(),
+    si.mem(),
+    si.networkStats(),
+    si.osInfo(),
+  ]);
+
+  // APFS-aware disk usage via df
+  var mainDisk = {};
+  try {
+    var dfOut = execFileSync('df', ['-k', '/'], { encoding: 'utf8', timeout: 2000 });
+    var parts = dfOut.split('\n')[1].split(/\s+/);
+    var totalK = parseInt(parts[1]) || 0;
+    var usedK = totalK - (parseInt(parts[3]) || 0); // total - available = real used
+    mainDisk = { size: totalK * 1024, used: usedK * 1024, use: totalK > 0 ? (usedK / totalK * 100) : 0 };
+  } catch(e) {
+    mainDisk = { size: 0, used: 0, use: 0 };
+  }
+  const netTotal = net.reduce(
+    (acc, n) => ({ tx: acc.tx + (n.tx_sec || 0), rx: acc.rx + (n.rx_sec || 0) }),
+    { tx: 0, rx: 0 }
+  );
+
+  return {
+    cpu: {
+      model: cpu.brand || cpu.manufacturer,
+      cores_physical: cpu.physicalCores,
+      cores_logical: cpu.cores,
+      percent: Math.round(cpuLoad.currentLoad * 10) / 10,
+    },
+    memory: {
+      total_gb: Math.round((mem.total / 1073741824) * 10) / 10,
+      used_gb: Math.round((mem.active / 1073741824) * 10) / 10,
+      percent: Math.round((mem.active / mem.total) * 1000) / 10,
+    },
+    disk: {
+      total_gb: Math.round(mainDisk.size / 1073741824 * 10) / 10,
+      used_gb: Math.round(mainDisk.used / 1073741824 * 10) / 10,
+      percent: Math.round(mainDisk.use * 10) / 10,
+    },
+    network: {
+      sent_mbs: Math.round((netTotal.tx / 1048576) * 10) / 10,
+      recv_mbs: Math.round((netTotal.rx / 1048576) * 10) / 10,
+    },
+    hostname: os.hostname(),
+    os: osInfo.distro + ' ' + osInfo.release,
+  };
+});
+
+// --- App Lifecycle ---
+
+app.whenReady().then(createWindow);
+
+app.on('window-all-closed', () => {
+  // Cleanup all PTY sessions
+  sessions.forEach((s) => s.pty.kill());
+  sessions.clear();
+  if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('activate', () => {
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
