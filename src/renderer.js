@@ -26,8 +26,19 @@ var termTitle = document.getElementById('termTitle');
 
 // --- Global event listeners ---
 addTabBtn.addEventListener('click', function() { createTab(); });
-window.addEventListener('resize', function() { if (activeTabId) fitAllPanesInTab(activeTabId); });
+var resizeTimer = null;
+window.addEventListener('resize', function() {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() {
+    if (activeTabId) fitAllPanesInTab(activeTabId);
+    if (typeof updateImePosition === 'function') updateImePosition();
+  }, 100);
+});
 window.addEventListener('beforeunload', function() { tabs.forEach(function(tab) { destroyTree(tab.paneRoot); }); });
 
-// --- Start ---
-createTab();
+// --- Start (저장된 레이아웃 복원 또는 새 탭) ---
+(async function() {
+  var saved = await window.terminal.loadSettings();
+  var restored = saved ? await restoreLayout(saved) : false;
+  if (!restored) createTab();
+})();

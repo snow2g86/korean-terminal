@@ -30,7 +30,7 @@ function createTab() {
   var tab = { id: tabId, paneRoot: pane, contentEl: contentEl, tabBtn: tabBtn, tabStatusDot: tabStatusDot };
   tabs.set(tabId, tab);
   switchTab(tabId);
-  setTimeout(function() { connectPane(pane); }, 100);
+  setTimeout(function() { connectPane(pane); scheduleSave(); }, 100);
   return tabId;
 }
 
@@ -58,6 +58,7 @@ function closeTab(tabId) {
   tab.tabBtn.remove();
   tabs.delete(tabId);
   if (activeTabId === tabId) switchTab(tabs.keys().next().value);
+  scheduleSave();
 }
 
 function destroyTree(node) {

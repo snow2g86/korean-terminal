@@ -60,6 +60,35 @@ function createIconBtn(iconName, title, onClick) {
   return btn;
 }
 
+function showPaneNotify(pane) {
+  if (pane.hasNotify) return;
+  pane.hasNotify = true;
+  if (pane.notifyDot) pane.notifyDot.style.display = '';
+  // 탭 뱃지도 표시
+  var tab = tabs.get(pane.tabId);
+  if (tab && tab.tabBtn && !tab.tabBtn.querySelector('.tab-notify-dot')) {
+    var dot = document.createElement('span');
+    dot.className = 'tab-notify-dot';
+    tab.tabBtn.appendChild(dot);
+  }
+}
+
+function clearPaneNotify(pane) {
+  if (!pane.hasNotify) return;
+  pane.hasNotify = false;
+  if (pane.notifyDot) pane.notifyDot.style.display = 'none';
+  // 해당 탭의 모든 패널 알림이 없으면 탭 뱃지도 제거
+  var tab = tabs.get(pane.tabId);
+  if (tab) {
+    var anyNotify = false;
+    forEachLeaf(tab.paneRoot, function(p) { if (p.hasNotify) anyNotify = true; });
+    if (!anyNotify) {
+      var tabDot = tab.tabBtn.querySelector('.tab-notify-dot');
+      if (tabDot) tabDot.remove();
+    }
+  }
+}
+
 function startEditPaneName(pane) {
   var nameEl = pane.nameEl;
   var input = document.createElement('input');
@@ -72,7 +101,7 @@ function startEditPaneName(pane) {
   input.select();
   function finish() {
     var n = input.value.trim();
-    if (n) { pane.paneName = n; nameEl.textContent = n; }
+    if (n) { pane.paneName = n; nameEl.textContent = n; scheduleSave(); }
     nameEl.style.display = '';
     if (input.parentNode) input.parentNode.removeChild(input);
   }

@@ -62,12 +62,19 @@ function createTerminalPane(tabId) {
   term.loadAddon(fitAddon);
   term.loadAddon(new XWebLinksAddon());
 
+  // 활동 알림 뱃지
+  var notifyDot = document.createElement('span');
+  notifyDot.className = 'pane-notify-dot';
+  notifyDot.style.display = 'none';
+  headerLeft.appendChild(notifyDot);
+
   var pane = {
     paneId: id, type: 'leaf', paneType: 'terminal', tabId: tabId,
     el: el, headerEl: header, areaEl: area,
     nameEl: paneName, paneName: '\ud130\ubbf8\ub110 ' + id,
     term: term, fitAddon: fitAddon,
     ptyId: null, parent: null,
+    notifyDot: notifyDot, hasNotify: false,
   };
 
   allPanes.set(id, pane);
@@ -87,12 +94,21 @@ async function connectPane(pane) {
 
   var cols = pane.term.cols;
   var rows = pane.term.rows;
-  var ptyId = await window.terminal.create({ cols: cols, rows: rows });
+  var ptyId = await window.terminal.create({ cols: cols, rows: rows, cwd: pane._restoreCwd || '' });
   pane.ptyId = ptyId;
 
-  // PTY output -> xterm
+  // PTY output -> xterm + 활동 알림 (출력 완료 감지)
+  var notifyTimer = null;
   window.terminal.onData(function(payload) {
-    if (payload.id === pane.ptyId) pane.term.write(payload.data);
+    if (payload.id === pane.ptyId) {
+      pane.term.write(payload.data);
+      if (focusedPaneId !== pane.paneId) {
+        clearTimeout(notifyTimer);
+        notifyTimer = setTimeout(function() {
+          if (focusedPaneId !== pane.paneId) showPaneNotify(pane);
+        }, 800);
+      }
+    }
   });
 
   // PTY exit
@@ -123,10 +139,14 @@ async function connectPane(pane) {
         var sel = dirPopupEl._entries[dirPopupEl._selectedIdx];
         if (sel) {
           var partial = inputBuf.replace(/^cd\s+/, '');
-          for (var bi = 0; bi < partial.length; bi++) window.terminal.write(pane.ptyId, '\x7f');
+          // 경로에서 마지막 / 이후의 filter 부분만 지우기
+          var lastSlash = partial.lastIndexOf('/');
+          var filterPart = lastSlash !== -1 ? partial.substring(lastSlash + 1) : partial;
+          var dirPrefix = lastSlash !== -1 ? partial.substring(0, lastSlash + 1) : '';
+          for (var bi = 0; bi < filterPart.length; bi++) window.terminal.write(pane.ptyId, '\x7f');
           var insert = sel.name + (sel.isDir ? '/' : '');
           window.terminal.write(pane.ptyId, insert);
-          inputBuf = 'cd ' + insert;
+          inputBuf = 'cd ' + dirPrefix + insert;
           hideDirPopup();
           if (data === '\r') { window.terminal.write(pane.ptyId, '\r'); inputBuf = ''; }
         }
@@ -160,6 +180,8 @@ async function connectPane(pane) {
     if (pane.ptyId) window.terminal.resize(pane.ptyId, size.cols, size.rows);
   });
 
+  delete pane._restoreCwd;
+
   updateTabStatusDot(pane.tabId);
   setStatus(true);
   pane.term.focus();
@@ -174,6 +196,7 @@ function focusPane(paneId) {
     pane.el.classList.add('focused');
     setStatus(pane.paneType === 'terminal' ? !!pane.ptyId : true);
     if (pane.term) pane.term.focus();
+    clearPaneNotify(pane);
   }
 }
 

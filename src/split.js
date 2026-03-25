@@ -38,6 +38,7 @@ function splitPane(paneId, direction) {
   setTimeout(function() {
     connectPane(newPane);
     fitAllPanesInTab(pane.tabId);
+    scheduleSave();
   }, 100);
 }
 
@@ -66,6 +67,7 @@ function closePane(paneId) {
   var firstLeaf = findFirstLeaf(sibling);
   if (firstLeaf) focusPane(firstLeaf.paneId);
   setTimeout(function() { fitAllPanesInTab(tab.id); }, 50);
+  scheduleSave();
 }
 
 function setupResizeHandle(handleEl, splitNode) {
@@ -88,6 +90,7 @@ function setupResizeHandle(handleEl, splitNode) {
       document.removeEventListener('mouseup', onUp);
       var tabId = findTabIdFromNode(splitNode);
       if (tabId) fitAllPanesInTab(tabId);
+      scheduleSave();
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);

@@ -20,4 +20,15 @@ contextBridge.exposeInMainWorld('terminal', {
   listDir: (dir, filter, onlyDirs) => ipcRenderer.invoke('fs:listDir', { dir, filter, onlyDirs }),
   getCwd: (id) => ipcRenderer.invoke('pty:getCwd', { id }),
 
+  // IME
+  getInputSource: () => ipcRenderer.invoke('ime:getSource'),
+
+  // Clipboard
+  clipboardRead: () => ipcRenderer.invoke('clipboard:read'),
+  clipboardWrite: (text) => ipcRenderer.send('clipboard:write', text),
+
+  // Settings
+  loadSettings: () => ipcRenderer.invoke('settings:load'),
+  saveSettings: (data) => ipcRenderer.send('settings:save', data),
+
 });

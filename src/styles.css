@@ -110,7 +110,7 @@ body {
 }
 
 /* === Pane System === */
-.pane-split { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
+.pane-split { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .pane-split.h { flex-direction: column; }
 .pane-split.v { flex-direction: row; }
 
@@ -229,4 +229,59 @@ body {
 .cmd-palette-hint {
     padding: 6px 12px; font-size: 11px; color: #484f58;
     border-top: 1px solid #21262d;
+}
+
+/* === Context Menu === */
+.ctx-menu {
+    position: fixed; z-index: 2000;
+    background: #1c2128; border: 1px solid #30363d;
+    border-radius: 8px; padding: 4px 0;
+    min-width: 180px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+}
+.ctx-menu-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px; cursor: pointer;
+    font-size: 12px; color: #c9d1d9;
+    transition: background 0.1s;
+}
+.ctx-menu-item i, .ctx-menu-item svg { width: 14px; height: 14px; color: #8b949e; }
+.ctx-menu-item:hover { background: #21262d; }
+.ctx-menu-item.disabled { color: #484f58; cursor: default; pointer-events: none; }
+.ctx-menu-item.disabled i, .ctx-menu-item.disabled svg { color: #484f58; }
+.ctx-menu-sep { height: 1px; background: #30363d; margin: 4px 8px; }
+
+/* === Activity Notify Dot === */
+.pane-notify-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: #d29922;
+    animation: notify-pulse 1.5s ease-in-out infinite;
+    flex-shrink: 0;
+}
+.tab-notify-dot {
+    position: absolute; top: -2px; left: -2px;
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #d29922;
+    animation: notify-pulse 1.5s ease-in-out infinite;
+}
+@keyframes notify-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* === IME Indicator === */
+.ime-tooltip {
+    position: fixed; z-index: 1500;
+    padding: 1px 5px; border-radius: 3px;
+    font-size: 10px; font-weight: 600;
+    font-family: 'Noto Sans KR', sans-serif;
+    pointer-events: none;
+    transition: left 0.05s, top 0.05s, opacity 0.15s;
+    opacity: 0.85;
+}
+.ime-tooltip.ko {
+    background: #58a6ff; color: #0d1117;
+}
+.ime-tooltip.en {
+    background: #30363d; color: #8b949e;
 }

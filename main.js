@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -30,7 +30,7 @@ function createWindow() {
 
 // --- PTY IPC Handlers ---
 
-ipcMain.handle('pty:create', (event, { cols, rows }) => {
+ipcMain.handle('pty:create', (event, { cols, rows, cwd }) => {
   const id = ++sessionCounter;
   const shell = process.env.SHELL || '/bin/zsh';
   const env = Object.assign({}, process.env, {
@@ -39,11 +39,15 @@ ipcMain.handle('pty:create', (event, { cols, rows }) => {
     LC_ALL: 'ko_KR.UTF-8',
   });
 
+  // cwd 유효성 검사
+  var startDir = cwd || process.env.HOME || os.homedir();
+  try { if (!fs.statSync(startDir).isDirectory()) startDir = os.homedir(); } catch(e) { startDir = os.homedir(); }
+
   const ptyProcess = pty.spawn(shell, ['-l'], {
     name: 'xterm-256color',
     cols: cols || 80,
     rows: rows || 24,
-    cwd: process.env.HOME || os.homedir(),
+    cwd: startDir,
     env: env,
   });
 
@@ -51,12 +55,12 @@ ipcMain.handle('pty:create', (event, { cols, rows }) => {
 
   // Forward PTY output to renderer
   ptyProcess.onData((data) => {
-    event.sender.send('pty:data', { id, data });
+    if (!event.sender.isDestroyed()) event.sender.send('pty:data', { id, data });
   });
 
   ptyProcess.onExit(({ exitCode }) => {
     sessions.delete(id);
-    event.sender.send('pty:exit', { id, exitCode });
+    if (!event.sender.isDestroyed()) event.sender.send('pty:exit', { id, exitCode });
   });
 
   return id;
@@ -190,6 +194,48 @@ ipcMain.handle('sysinfo', async () => {
     hostname: os.hostname(),
     os: osInfo.distro + ' ' + osInfo.release,
   };
+});
+
+// --- Input Source IPC (한/영 감지) ---
+
+ipcMain.handle('ime:getSource', () => {
+  try {
+    const { execFileSync } = require('child_process');
+    var out = execFileSync('defaults', ['read', 'com.apple.HIToolbox', 'AppleSelectedInputSources'], { encoding: 'utf8', timeout: 500 });
+    if (out.indexOf('Korean') !== -1 || out.indexOf('korean') !== -1 || out.indexOf('HangulKeyboardLayout') !== -1) return 'ko';
+    return 'en';
+  } catch (e) {
+    return 'en';
+  }
+});
+
+// --- Clipboard IPC ---
+
+ipcMain.handle('clipboard:read', () => {
+  return clipboard.readText();
+});
+
+ipcMain.on('clipboard:write', (event, text) => {
+  clipboard.writeText(text);
+});
+
+// --- Settings IPC ---
+
+const settingsPath = path.join(app.getPath('userData'), 'layout.json');
+
+ipcMain.handle('settings:load', async () => {
+  try {
+    var data = fs.readFileSync(settingsPath, 'utf8');
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.on('settings:save', (event, data) => {
+  try {
+    fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {}
 });
 
 // --- App Lifecycle ---
