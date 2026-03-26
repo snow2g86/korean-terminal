@@ -27,8 +27,21 @@ contextBridge.exposeInMainWorld('terminal', {
   clipboardRead: () => ipcRenderer.invoke('clipboard:read'),
   clipboardWrite: (text) => ipcRenderer.send('clipboard:write', text),
 
-  // Settings
+  // Settings (layout)
   loadSettings: () => ipcRenderer.invoke('settings:load'),
   saveSettings: (data) => ipcRenderer.send('settings:save', data),
+
+  // Preferences (user config)
+  loadPrefs: () => ipcRenderer.invoke('prefs:load'),
+  savePrefs: (data) => ipcRenderer.send('prefs:save', data),
+
+  // File operations
+  readFile: (filePath) => ipcRenderer.invoke('fs:readFile', filePath),
+  writeFile: (filePath, content) => ipcRenderer.send('fs:writeFile', { filePath, content }),
+  findFiles: (dir, pattern) => ipcRenderer.invoke('fs:findFiles', { dir, pattern }),
+
+  // File dialogs
+  openFile: (opts) => ipcRenderer.invoke('dialog:openFile', opts || {}),
+  saveFile: (content, defaultName) => ipcRenderer.invoke('dialog:saveFile', { content, defaultName }),
 
 });

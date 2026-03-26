@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, clipboard, dialog } = require('electron');
 const path = require('path');
 const os = require('os');
 const fs = require('fs');
@@ -23,7 +23,14 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
     },
+  });
+
+  // queryLocalFonts API 허용
+  win.webContents.session.setPermissionRequestHandler((webContents, permission, callback) => {
+    if (permission === 'local-fonts') return callback(true);
+    callback(true);
   });
 
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
@@ -223,6 +230,7 @@ ipcMain.on('clipboard:write', (event, text) => {
 // --- Settings IPC ---
 
 const settingsPath = path.join(app.getPath('userData'), 'layout.json');
+const prefsPath = path.join(app.getPath('userData'), 'preferences.json');
 
 ipcMain.handle('settings:load', async () => {
   try {
@@ -236,6 +244,86 @@ ipcMain.handle('settings:load', async () => {
 ipcMain.on('settings:save', (event, data) => {
   try {
     fs.writeFileSync(settingsPath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {}
+});
+
+// --- File Read/Write IPC ---
+
+ipcMain.handle('fs:readFile', async (event, filePath) => {
+  try {
+    return fs.readFileSync(filePath, 'utf8');
+  } catch(e) { return null; }
+});
+
+ipcMain.on('fs:writeFile', (event, { filePath, content }) => {
+  try {
+    fs.writeFileSync(filePath, content, 'utf8');
+  } catch(e) {}
+});
+
+ipcMain.handle('fs:findFiles', async (event, { dir, pattern }) => {
+  try {
+    var results = [];
+    function walk(d, depth) {
+      if (depth > 3) return;
+      var entries;
+      try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch(e) { return; }
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        if (e.name.startsWith('.') && e.name !== '.claude') continue;
+        var full = path.join(d, e.name);
+        if (e.isFile() && e.name.match(pattern)) {
+          results.push({ name: e.name, path: full, dir: d });
+        }
+        if (e.isDirectory() && (e.name === '.claude' || e.name === 'docs')) {
+          walk(full, depth + 1);
+        }
+      }
+    }
+    walk(dir, 0);
+    return results;
+  } catch(e) { return []; }
+});
+
+// --- File Dialog IPC ---
+
+ipcMain.handle('dialog:openFile', async (event, opts) => {
+  var result = await dialog.showOpenDialog(BrowserWindow.getFocusedWindow(), {
+    properties: ['openFile'],
+    filters: opts.filters || [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  try {
+    return fs.readFileSync(result.filePaths[0], 'utf8');
+  } catch(e) { return null; }
+});
+
+ipcMain.handle('dialog:saveFile', async (event, { content, defaultName }) => {
+  var result = await dialog.showSaveDialog(BrowserWindow.getFocusedWindow(), {
+    defaultPath: defaultName || 'theme.json',
+    filters: [{ name: 'JSON', extensions: ['json'] }],
+  });
+  if (result.canceled || !result.filePath) return false;
+  try {
+    fs.writeFileSync(result.filePath, content, 'utf8');
+    return true;
+  } catch(e) { return false; }
+});
+
+// --- Preferences IPC ---
+
+ipcMain.handle('prefs:load', async () => {
+  try {
+    var data = fs.readFileSync(prefsPath, 'utf8');
+    return JSON.parse(data);
+  } catch (e) {
+    return null;
+  }
+});
+
+ipcMain.on('prefs:save', (event, data) => {
+  try {
+    fs.writeFileSync(prefsPath, JSON.stringify(data, null, 2), 'utf8');
   } catch (e) {}
 });
 

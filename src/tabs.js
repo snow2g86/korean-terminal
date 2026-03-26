@@ -2,7 +2,7 @@
    탭 관리
    ============================================================= */
 
-function createTab() {
+function createTab(startCwd) {
   var tabId = ++tabCounter;
   var contentEl = document.createElement('div');
   contentEl.className = 'tab-content';
@@ -26,15 +26,19 @@ function createTab() {
   sidebar.insertBefore(tabBtn, addTabBtn);
 
   var pane = createTerminalPane(tabId);
+  if (startCwd) pane._restoreCwd = startCwd;
   contentEl.appendChild(pane.el);
   var tab = { id: tabId, paneRoot: pane, contentEl: contentEl, tabBtn: tabBtn, tabStatusDot: tabStatusDot };
   tabs.set(tabId, tab);
   switchTab(tabId);
+  renumberTabs();
   setTimeout(function() { connectPane(pane); scheduleSave(); }, 100);
   return tabId;
 }
 
 function switchTab(tabId) {
+  if (settingsOpen) toggleSettings();
+  if (favoritesOpen) toggleFavorites();
   activeTabId = tabId;
   tabs.forEach(function(tab, id) {
     if (id === tabId) { tab.contentEl.classList.add('active'); tab.tabBtn.classList.add('active'); }
@@ -58,7 +62,27 @@ function closeTab(tabId) {
   tab.tabBtn.remove();
   tabs.delete(tabId);
   if (activeTabId === tabId) switchTab(tabs.keys().next().value);
+  renumberTabs();
   scheduleSave();
+}
+
+function renumberTabs() {
+  var idx = 1;
+  tabs.forEach(function(tab) {
+    tab.tabBtn.textContent = '';
+    tab.tabBtn.textContent = idx;
+    tab.tabBtn.title = '터미널 ' + idx;
+    // status dot, close btn 재추가 (textContent로 지워졌으므로)
+    tab.tabBtn.appendChild(tab.tabStatusDot);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'tab-btn-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.addEventListener('click', (function(tid) {
+      return function(e) { e.stopPropagation(); closeTab(tid); };
+    })(tab.id));
+    tab.tabBtn.appendChild(closeBtn);
+    idx++;
+  });
 }
 
 function destroyTree(node) {

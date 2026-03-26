@@ -57,10 +57,23 @@
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <button class="add-tab-btn" id="addTabBtn" title="새 터미널">+</button>
+            <div class="sidebar-spacer"></div>
+            <button class="settings-btn" id="favoritesBtn" title="즐겨찾기">
+                <i data-lucide="star"></i>
+            </button>
+            <button class="settings-btn" id="settingsBtn" title="설정">
+                <i data-lucide="settings"></i>
+            </button>
         </div>
 
         <!-- Terminal Panel -->
         <div class="terminal-panel" id="terminalPanel"></div>
+
+        <!-- Favorites Panel -->
+        <div class="settings-panel" id="favoritesPanel" style="display:none;"></div>
+
+        <!-- Settings Panel -->
+        <div class="settings-panel" id="settingsPanel" style="display:none;"></div>
     </div>
 
 
@@ -81,6 +94,9 @@
     <script src="dir-autocomplete.js"></script>
     <script src="context-menu.js"></script>
     <script src="ime-indicator.js"></script>
+    <script src="favorites.js"></script>
+    <script src="md-sidebar.js"></script>
+    <script src="settings.js"></script>
     <script src="layout-persist.js"></script>
     <script src="hw-monitor.js"></script>
     <script src="renderer.js"></script>

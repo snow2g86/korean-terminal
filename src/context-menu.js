@@ -46,6 +46,33 @@ function showContextMenu(x, y, pane) {
   items.push({ type: 'separator' });
   items.push({ label: '가로 분할', icon: 'rows-2', action: function() { splitPane(pane.paneId, 'h'); }});
   items.push({ label: '세로 분할', icon: 'columns-2', action: function() { splitPane(pane.paneId, 'v'); }});
+
+  // 즐겨찾기
+  if (currentPrefs && currentPrefs.favorites && currentPrefs.favorites.length > 0) {
+    items.push({ type: 'separator' });
+    for (var fi = 0; fi < currentPrefs.favorites.length; fi++) {
+      var fav = currentPrefs.favorites[fi];
+      items.push({ label: '\uD83D\uDCC2 ' + fav.name, icon: 'folder', action: (function(f) {
+        return function() { navigateToFavorite(pane, f); };
+      })(fav) });
+    }
+  }
+  items.push({ type: 'separator' });
+  items.push({ label: '즐겨찾기에 추가', icon: 'star', action: function() {
+    addCurrentDirToFavorites(pane);
+  }});
+
+  // AI 프로필 서브메뉴
+  if (currentPrefs && currentPrefs.aiProfiles && currentPrefs.aiProfiles.length > 0) {
+    items.push({ type: 'separator' });
+    for (var ai = 0; ai < currentPrefs.aiProfiles.length; ai++) {
+      var ap = currentPrefs.aiProfiles[ai];
+      items.push({ label: ap.icon + ' ' + ap.name, icon: 'bot', action: (function(profile) {
+        return function() { launchAiProfile(profile); };
+      })(ap) });
+    }
+  }
+
   items.push({ type: 'separator' });
   items.push({ label: '패널 닫기', icon: 'x', action: function() { closePane(pane.paneId); }});
 

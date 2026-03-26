@@ -36,9 +36,32 @@ window.addEventListener('resize', function() {
 });
 window.addEventListener('beforeunload', function() { tabs.forEach(function(tab) { destroyTree(tab.paneRoot); }); });
 
-// --- Start (저장된 레이아웃 복원 또는 새 탭) ---
+// --- Start (설정 로드 → 레이아웃 복원 또는 시작 탭) ---
 (async function() {
+  await loadPrefs();
   var saved = await window.terminal.loadSettings();
   var restored = saved ? await restoreLayout(saved) : false;
-  if (!restored) createTab();
+  if (!restored) createStartTabs();
 })();
+
+function createStartTabs() {
+  var startTabs = currentPrefs.startTabs;
+  if (!startTabs || startTabs.length === 0) {
+    createTab();
+    return;
+  }
+  for (var i = 0; i < startTabs.length; i++) {
+    var st = startTabs[i];
+    var tabId = createTab(st.cwd || '');
+    if (st.name) {
+      var tab = tabs.get(tabId);
+      if (tab) {
+        var leaf = findFirstLeaf(tab.paneRoot);
+        if (leaf) {
+          leaf.paneName = st.name;
+          leaf.nameEl.textContent = st.name;
+        }
+      }
+    }
+  }
+}

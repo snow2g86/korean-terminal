@@ -189,11 +189,24 @@ async function connectPane(pane) {
 
 function focusPane(paneId) {
   if (focusedPaneId === paneId) return;
-  if (focusedPaneId) { var old = allPanes.get(focusedPaneId); if (old && old.el) old.el.classList.remove('focused'); }
+  if (focusedPaneId) {
+    var old = allPanes.get(focusedPaneId);
+    if (old && old.el) {
+      old.el.classList.remove('focused');
+      // 비포커스 헤더 색상 복원
+      if (old.headerEl) { old.headerEl.style.background = ''; old.headerEl.style.color = ''; }
+    }
+  }
   focusedPaneId = paneId;
   var pane = allPanes.get(paneId);
   if (pane && pane.el) {
     pane.el.classList.add('focused');
+    // 포커스 헤더에 테마 accent 적용
+    if (pane.headerEl) {
+      var accent = getComputedStyle(document.documentElement).getPropertyValue('--theme-accent').trim() || '#58a6ff';
+      pane.headerEl.style.background = accent;
+      pane.headerEl.style.color = '#fff';
+    }
     setStatus(pane.paneType === 'terminal' ? !!pane.ptyId : true);
     if (pane.term) pane.term.focus();
     clearPaneNotify(pane);

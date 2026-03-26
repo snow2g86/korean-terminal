@@ -47,7 +47,11 @@ function closePane(paneId) {
   if (!pane) return;
   var tab = tabs.get(pane.tabId);
   if (!tab) return;
-  if (tab.paneRoot === pane) return;
+  if (tab.paneRoot === pane) {
+    // 마지막 패널 → 탭 닫기 (탭이 1개면 무시)
+    if (tabs.size > 1) closeTab(pane.tabId);
+    return;
+  }
   var splitNode = pane.parent;
   if (!splitNode || splitNode.type !== 'split') return;
   var siblingIdx = splitNode.children[0] === pane ? 1 : 0;
@@ -101,47 +105,191 @@ function togglePaneType(paneId) {
   var pane = allPanes.get(paneId);
   if (!pane) return;
   if (pane.paneType === 'terminal') {
-    destroyPaneResources(pane);
-    while (pane.areaEl.firstChild) pane.areaEl.removeChild(pane.areaEl.firstChild);
-    pane.areaEl.className = 'pane-browser-area';
-    pane.paneType = 'browser';
-    var urlBar = document.createElement('div');
-    urlBar.className = 'browser-url-bar';
-    var urlInput = document.createElement('input');
-    urlInput.className = 'browser-url-input';
-    urlInput.type = 'text';
-    urlInput.placeholder = 'URL \uc785\ub825...';
-    urlInput.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') { var url = urlInput.value; if (url && !url.match(/^https?:\/\//)) url = 'https://' + url; if (url) pane.iframeEl.src = url; }
-    });
-    urlBar.appendChild(urlInput);
-    var iframe = document.createElement('iframe');
-    iframe.className = 'browser-iframe';
-    iframe.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
-    iframe.src = 'about:blank';
-    pane.areaEl.appendChild(urlBar);
-    pane.areaEl.appendChild(iframe);
-    pane.iframeEl = iframe;
-    pane.urlInputEl = urlInput;
-    pane.el.querySelector('.pane-type-icon').textContent = '\uD83C\uDF10';
-    allPanes.set(paneId, pane);
+    convertToBrowser(pane);
   } else {
-    while (pane.areaEl.firstChild) pane.areaEl.removeChild(pane.areaEl.firstChild);
-    pane.areaEl.className = 'pane-terminal-area';
-    pane.paneType = 'terminal';
-    pane.iframeEl = null;
-    pane.urlInputEl = null;
-    var newPane = createTerminalPane(pane.tabId);
-    pane.el.parentNode.replaceChild(newPane.el, pane.el);
-    newPane.parent = pane.parent;
-    if (pane.parent && pane.parent.children) {
-      var idx = pane.parent.children.indexOf(pane);
-      if (idx >= 0) pane.parent.children[idx] = newPane;
-    }
-    var tab = tabs.get(pane.tabId);
-    if (tab && tab.paneRoot === pane) tab.paneRoot = newPane;
-    allPanes.delete(pane.paneId);
-    connectPane(newPane);
-    focusPane(newPane.paneId);
+    convertToTerminal(pane);
   }
+}
+
+function convertToBrowser(pane) {
+  destroyPaneResources(pane);
+  while (pane.areaEl.firstChild) pane.areaEl.removeChild(pane.areaEl.firstChild);
+  pane.areaEl.className = 'pane-browser-area';
+  pane.paneType = 'browser';
+
+  // 네비게이션 바
+  var navBar = document.createElement('div');
+  navBar.className = 'browser-nav-bar';
+
+  var backBtn = document.createElement('button');
+  backBtn.className = 'browser-nav-btn';
+  backBtn.title = '뒤로';
+  var backIco = document.createElement('i');
+  backIco.setAttribute('data-lucide', 'arrow-left');
+  backBtn.appendChild(backIco);
+  backBtn.addEventListener('click', function() { if (pane.webviewEl) pane.webviewEl.goBack(); });
+  navBar.appendChild(backBtn);
+
+  var fwdBtn = document.createElement('button');
+  fwdBtn.className = 'browser-nav-btn';
+  fwdBtn.title = '앞으로';
+  var fwdIco = document.createElement('i');
+  fwdIco.setAttribute('data-lucide', 'arrow-right');
+  fwdBtn.appendChild(fwdIco);
+  fwdBtn.addEventListener('click', function() { if (pane.webviewEl) pane.webviewEl.goForward(); });
+  navBar.appendChild(fwdBtn);
+
+  var reloadBtn = document.createElement('button');
+  reloadBtn.className = 'browser-nav-btn';
+  reloadBtn.title = '새로고침';
+  var reloadIco = document.createElement('i');
+  reloadIco.setAttribute('data-lucide', 'refresh-cw');
+  reloadBtn.appendChild(reloadIco);
+  reloadBtn.addEventListener('click', function() { if (pane.webviewEl) pane.webviewEl.reload(); });
+  navBar.appendChild(reloadBtn);
+
+  // URL 입력
+  var urlInput = document.createElement('input');
+  urlInput.className = 'browser-url-input';
+  urlInput.type = 'text';
+  urlInput.placeholder = 'URL 입력 또는 검색...';
+  urlInput.value = 'https://www.google.com';
+  urlInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') browserNavigate(pane, urlInput.value);
+  });
+  navBar.appendChild(urlInput);
+
+  // 즐겨찾기 버튼
+  var starBtn = document.createElement('button');
+  starBtn.className = 'browser-nav-btn';
+  starBtn.title = 'URL 즐겨찾기';
+  var starIco = document.createElement('i');
+  starIco.setAttribute('data-lucide', 'star');
+  starBtn.appendChild(starIco);
+  starBtn.addEventListener('click', function() {
+    var url = pane.urlInputEl ? pane.urlInputEl.value : '';
+    if (!url || url === 'about:blank') return;
+    var name = url.replace(/^https?:\/\//, '').split('/')[0];
+    if (!currentPrefs.browserFavorites) currentPrefs.browserFavorites = [];
+    for (var i = 0; i < currentPrefs.browserFavorites.length; i++) {
+      if (currentPrefs.browserFavorites[i].url === url) return;
+    }
+    currentPrefs.browserFavorites.push({ name: name, url: url });
+    savePrefs();
+    renderBrowserFavBar(pane);
+  });
+  navBar.appendChild(starBtn);
+
+  // DevTools 버튼
+  var devBtn = document.createElement('button');
+  devBtn.className = 'browser-nav-btn';
+  devBtn.title = '개발자 도구';
+  var devIco = document.createElement('i');
+  devIco.setAttribute('data-lucide', 'code');
+  devBtn.appendChild(devIco);
+  devBtn.addEventListener('click', function() {
+    if (pane.webviewEl) {
+      if (pane.webviewEl.isDevToolsOpened()) pane.webviewEl.closeDevTools();
+      else pane.webviewEl.openDevTools();
+    }
+  });
+  navBar.appendChild(devBtn);
+
+  pane.areaEl.appendChild(navBar);
+
+  // 즐겨찾기 바
+  var favBar = document.createElement('div');
+  favBar.className = 'browser-fav-bar';
+  pane.browserFavBar = favBar;
+  pane.areaEl.appendChild(favBar);
+
+  // Webview
+  var webview = document.createElement('webview');
+  webview.className = 'browser-webview';
+  webview.setAttribute('allowpopups', '');
+  webview.src = 'https://www.google.com';
+
+  webview.addEventListener('did-navigate', function(e) {
+    urlInput.value = e.url;
+  });
+  webview.addEventListener('did-navigate-in-page', function(e) {
+    if (e.isMainFrame) urlInput.value = e.url;
+  });
+  webview.addEventListener('page-title-updated', function(e) {
+    pane.paneName = e.title || 'Browser';
+    pane.nameEl.textContent = pane.paneName;
+  });
+
+  pane.areaEl.appendChild(webview);
+  pane.webviewEl = webview;
+  pane.urlInputEl = urlInput;
+  pane.el.querySelector('.pane-type-icon').textContent = '\uD83C\uDF10';
+  allPanes.set(pane.paneId, pane);
+
+  renderBrowserFavBar(pane);
+  setTimeout(function() { if (window.lucide) lucide.createIcons({ node: navBar }); }, 0);
+}
+
+function browserNavigate(pane, input) {
+  if (!pane.webviewEl) return;
+  var url = input.trim();
+  if (!url) return;
+  // 검색어인지 URL인지 판별
+  if (url.match(/^https?:\/\//)) { /* 그대로 */ }
+  else if (url.match(/^localhost/) || url.match(/^\d+\.\d+/) || url.indexOf('.') !== -1) {
+    url = 'https://' + url;
+  } else {
+    url = 'https://www.google.com/search?q=' + encodeURIComponent(url);
+  }
+  pane.webviewEl.src = url;
+  if (pane.urlInputEl) pane.urlInputEl.value = url;
+}
+
+function renderBrowserFavBar(pane) {
+  var favBar = pane.browserFavBar;
+  if (!favBar) return;
+  while (favBar.firstChild) favBar.removeChild(favBar.firstChild);
+  var favs = (currentPrefs && currentPrefs.browserFavorites) || [];
+  if (favs.length === 0) { favBar.style.display = 'none'; return; }
+  favBar.style.display = '';
+  for (var i = 0; i < favs.length; i++) {
+    var btn = document.createElement('button');
+    btn.className = 'browser-fav-btn';
+    btn.textContent = favs[i].name;
+    btn.title = favs[i].url;
+    btn.addEventListener('click', (function(url) {
+      return function() { if (pane.webviewEl) { pane.webviewEl.src = url; if (pane.urlInputEl) pane.urlInputEl.value = url; } };
+    })(favs[i].url));
+    // 삭제 (우클릭)
+    btn.addEventListener('contextmenu', (function(idx) {
+      return function(e) {
+        e.preventDefault();
+        currentPrefs.browserFavorites.splice(idx, 1);
+        savePrefs();
+        renderBrowserFavBar(pane);
+      };
+    })(i));
+    favBar.appendChild(btn);
+  }
+}
+
+function convertToTerminal(pane) {
+  while (pane.areaEl.firstChild) pane.areaEl.removeChild(pane.areaEl.firstChild);
+  pane.areaEl.className = 'pane-terminal-area';
+  pane.paneType = 'terminal';
+  pane.webviewEl = null;
+  pane.urlInputEl = null;
+  pane.browserFavBar = null;
+  var newPane = createTerminalPane(pane.tabId);
+  pane.el.parentNode.replaceChild(newPane.el, pane.el);
+  newPane.parent = pane.parent;
+  if (pane.parent && pane.parent.children) {
+    var idx = pane.parent.children.indexOf(pane);
+    if (idx >= 0) pane.parent.children[idx] = newPane;
+  }
+  var tab = tabs.get(pane.tabId);
+  if (tab && tab.paneRoot === pane) tab.paneRoot = newPane;
+  allPanes.delete(pane.paneId);
+  connectPane(newPane);
+  focusPane(newPane.paneId);
 }
