@@ -15,11 +15,15 @@
     "productName": "한텀",
     "mac": {
       "target": [
-        "dmg"
+        "dir"
       ],
       "icon": "build/icon.icns",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "hardenedRuntime": true
     },
+    "asar": false,
     "win": {
       "target": [
         "nsis"
@@ -57,7 +61,7 @@
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.3",
-    "electron": "^41.0.3",
+    "electron": "^35.7.5",
     "electron-builder": "^26.0.0"
   }
 }
