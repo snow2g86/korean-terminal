@@ -98,13 +98,13 @@ async function connectPane(pane) {
   pane.ptyId = ptyId;
 
   // PTY output -> xterm + 활동 알림 (출력 완료 감지)
-  var notifyTimer = null;
+  pane._notifyTimer = null;
   window.terminal.onData(function(payload) {
     if (payload.id === pane.ptyId) {
       pane.term.write(payload.data);
       if (focusedPaneId !== pane.paneId) {
-        clearTimeout(notifyTimer);
-        notifyTimer = setTimeout(function() {
+        clearTimeout(pane._notifyTimer);
+        pane._notifyTimer = setTimeout(function() {
           if (focusedPaneId !== pane.paneId) showPaneNotify(pane);
         }, 800);
       }

@@ -15,7 +15,8 @@ function createWindow() {
     height: 800,
     minWidth: 600,
     minHeight: 400,
-    title: '한글 터미널',
+    title: '한텀',
+    icon: path.join(__dirname, 'build', 'icon.icns'),
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0d1117',
     webPreferences: {

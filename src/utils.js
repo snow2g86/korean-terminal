@@ -74,6 +74,8 @@ function showPaneNotify(pane) {
 }
 
 function clearPaneNotify(pane) {
+  clearTimeout(pane._notifyTimer);
+  pane._notifyTimer = null;
   if (!pane.hasNotify) return;
   pane.hasNotify = false;
   if (pane.notifyDot) pane.notifyDot.style.display = 'none';
