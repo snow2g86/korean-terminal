@@ -38,6 +38,15 @@ window.addEventListener('beforeunload', function() { tabs.forEach(function(tab) 
 
 // --- Start (설정 로드 → 레이아웃 복원 또는 시작 탭) ---
 (async function() {
+  // 에러 로그 Rust로 전송
+  setTimeout(function() {
+    if (window._errorLog && window._errorLog.length > 0) {
+      for (var i = 0; i < window._errorLog.length; i++) {
+        try { window.__TAURI__.core.invoke('log_from_js', { msg: window._errorLog[i] }); } catch(e) {}
+      }
+    }
+  }, 3000);
+
   await loadPrefs();
   var saved = await window.terminal.loadSettings();
   var restored = saved ? await restoreLayout(saved) : false;

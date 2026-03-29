@@ -127,7 +127,7 @@ function convertToBrowser(pane) {
   var backIco = document.createElement('i');
   backIco.setAttribute('data-lucide', 'arrow-left');
   backBtn.appendChild(backIco);
-  backBtn.addEventListener('click', function() { if (pane.webviewEl) pane.webviewEl.goBack(); });
+  backBtn.addEventListener('click', function() { if (pane.webviewEl) try { pane.webviewEl.contentWindow.history.back(); } catch(e){} });
   navBar.appendChild(backBtn);
 
   var fwdBtn = document.createElement('button');
@@ -136,7 +136,7 @@ function convertToBrowser(pane) {
   var fwdIco = document.createElement('i');
   fwdIco.setAttribute('data-lucide', 'arrow-right');
   fwdBtn.appendChild(fwdIco);
-  fwdBtn.addEventListener('click', function() { if (pane.webviewEl) pane.webviewEl.goForward(); });
+  fwdBtn.addEventListener('click', function() { if (pane.webviewEl) try { pane.webviewEl.contentWindow.history.forward(); } catch(e){} });
   navBar.appendChild(fwdBtn);
 
   var reloadBtn = document.createElement('button');
@@ -145,7 +145,7 @@ function convertToBrowser(pane) {
   var reloadIco = document.createElement('i');
   reloadIco.setAttribute('data-lucide', 'refresh-cw');
   reloadBtn.appendChild(reloadIco);
-  reloadBtn.addEventListener('click', function() { if (pane.webviewEl) pane.webviewEl.reload(); });
+  reloadBtn.addEventListener('click', function() { if (pane.webviewEl) try { pane.webviewEl.contentWindow.location.reload(); } catch(e){} });
   navBar.appendChild(reloadBtn);
 
   // URL 입력
@@ -180,21 +180,6 @@ function convertToBrowser(pane) {
   });
   navBar.appendChild(starBtn);
 
-  // DevTools 버튼
-  var devBtn = document.createElement('button');
-  devBtn.className = 'browser-nav-btn';
-  devBtn.title = '개발자 도구';
-  var devIco = document.createElement('i');
-  devIco.setAttribute('data-lucide', 'code');
-  devBtn.appendChild(devIco);
-  devBtn.addEventListener('click', function() {
-    if (pane.webviewEl) {
-      if (pane.webviewEl.isDevToolsOpened()) pane.webviewEl.closeDevTools();
-      else pane.webviewEl.openDevTools();
-    }
-  });
-  navBar.appendChild(devBtn);
-
   pane.areaEl.appendChild(navBar);
 
   // 즐겨찾기 바
@@ -203,21 +188,21 @@ function convertToBrowser(pane) {
   pane.browserFavBar = favBar;
   pane.areaEl.appendChild(favBar);
 
-  // Webview
-  var webview = document.createElement('webview');
+  // iframe (Tauri에서는 webview 대신 iframe 사용)
+  var webview = document.createElement('iframe');
   webview.className = 'browser-webview';
-  webview.setAttribute('allowpopups', '');
+  webview.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-forms allow-popups');
   webview.src = 'https://www.google.com';
 
-  webview.addEventListener('did-navigate', function(e) {
-    urlInput.value = e.url;
-  });
-  webview.addEventListener('did-navigate-in-page', function(e) {
-    if (e.isMainFrame) urlInput.value = e.url;
-  });
-  webview.addEventListener('page-title-updated', function(e) {
-    pane.paneName = e.title || 'Browser';
-    pane.nameEl.textContent = pane.paneName;
+  webview.addEventListener('load', function() {
+    try {
+      urlInput.value = webview.contentWindow.location.href;
+      var title = webview.contentDocument && webview.contentDocument.title;
+      if (title) {
+        pane.paneName = title;
+        pane.nameEl.textContent = title;
+      }
+    } catch(e) { /* cross-origin */ }
   });
 
   pane.areaEl.appendChild(webview);

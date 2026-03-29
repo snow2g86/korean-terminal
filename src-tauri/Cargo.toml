@@ -1,0 +1,28 @@
+[package]
+name = "hanterm-tauri"
+version = "0.1.0"
+description = "한텀 (HanTerm) - Rust 기반 데스크톱 터미널 에뮬레이터"
+authors = ["2z"]
+edition = "2021"
+
+[lib]
+name = "hanterm_tauri_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "devtools"] }
+tauri-plugin-opener = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-store = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+portable-pty = "0.8"
+sysinfo = "0.34"
+parking_lot = "0.12"
+dirs = "6"
+regex = "1"

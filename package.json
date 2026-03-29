@@ -1,67 +1,18 @@
 {
-  "name": "hanterm",
-  "version": "1.0.0",
-  "description": "한텀 (HanTerm) - 데스크톱 터미널 에뮬레이터",
-  "main": "main.js",
+  "name": "hanterm-tauri",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
   "scripts": {
-    "start": "electron .",
-    "restart": "pkill -f Electron.app; sleep 1; electron .",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win",
-    "build:linux": "electron-builder --linux"
+    "tauri": "tauri"
   },
-  "build": {
-    "appId": "com.hanterm",
-    "productName": "한텀",
-    "mac": {
-      "target": [
-        "dir"
-      ],
-      "icon": "build/icon.icns",
-      "category": "public.app-category.developer-tools",
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "hardenedRuntime": true
-    },
-    "asar": false,
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "static/icon.png"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ]
-    },
-    "files": [
-      "main.js",
-      "preload.js",
-      "src/**/*",
-      "node_modules/**/*"
-    ]
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
   },
-  "keywords": [
-    "terminal",
-    "korean",
-    "electron"
-  ],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-web-links": "^0.12.0",
     "@xterm/xterm": "^6.0.0",
-    "ansi_up": "^6.0.6",
-    "electron-store": "^11.0.2",
-    "lucide": "^1.6.0",
-    "node-pty": "^1.1.0",
-    "systeminformation": "^5.31.5"
-  },
-  "devDependencies": {
-    "@electron/rebuild": "^4.0.3",
-    "electron": "^35.7.5",
-    "electron-builder": "^26.0.0"
+    "lucide": "^1.7.0"
   }
 }

@@ -13,7 +13,7 @@ async function attachMdSidebar(pane, profile) {
   if (pane.ptyId) {
     try { cwd = await window.terminal.getCwd(pane.ptyId); } catch(e) {}
   }
-  if (!cwd) cwd = process.env && process.env.HOME || '/';
+  if (!cwd) cwd = '/';
 
   // 파일 검색
   var files = await window.terminal.findFiles(cwd, profile.mdPattern);
