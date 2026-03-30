@@ -92,6 +92,11 @@ async function connectPane(pane) {
     pane.term.textarea.addEventListener('focus', function() { focusPane(pane.paneId); });
   }
 
+  // WKWebView 한글 IME 패치 — insertReplacementText 가로채기
+  var imeHandle = WkHangulIme.attach(pane.term, function(text) {
+    if (pane.ptyId) window.terminal.write(pane.ptyId, text);
+  });
+
   var cols = pane.term.cols;
   var rows = pane.term.rows;
   var ptyId = await window.terminal.create({ cols: cols, rows: rows, cwd: pane._restoreCwd || '' });
@@ -120,7 +125,7 @@ async function connectPane(pane) {
     }
   });
 
-  // xterm input -> PTY (with cd autocomplete)
+  // xterm input -> PTY (cd autocomplete)
   var inputBuf = '';
   var dirPopupEl = document.createElement('div');
   dirPopupEl.className = 'dir-popup';
@@ -132,6 +137,10 @@ async function connectPane(pane) {
   pane.term.onData(function(data) {
     if (!pane.ptyId) return;
 
+    // WKWebView IME: 이미 flush된 한글 누출 차단
+    if (imeHandle && imeHandle.shouldSkip(data)) return;
+
+    // 디렉토리 자동완성 팝업 처리
     if (dirPopupEl.style.display !== 'none' && dirPopupEl._entries.length > 0) {
       if (data === '\x1b[A') { dirPopupEl._selectedIdx = Math.max(0, dirPopupEl._selectedIdx - 1); renderDirPopup(dirPopupEl, dirPopupEl._entries, dirPopupEl._selectedIdx); return; }
       if (data === '\x1b[B') { dirPopupEl._selectedIdx = Math.min(dirPopupEl._entries.length - 1, dirPopupEl._selectedIdx + 1); renderDirPopup(dirPopupEl, dirPopupEl._entries, dirPopupEl._selectedIdx); return; }
@@ -139,7 +148,6 @@ async function connectPane(pane) {
         var sel = dirPopupEl._entries[dirPopupEl._selectedIdx];
         if (sel) {
           var partial = inputBuf.replace(/^cd\s+/, '');
-          // 경로에서 마지막 / 이후의 filter 부분만 지우기
           var lastSlash = partial.lastIndexOf('/');
           var filterPart = lastSlash !== -1 ? partial.substring(lastSlash + 1) : partial;
           var dirPrefix = lastSlash !== -1 ? partial.substring(0, lastSlash + 1) : '';
@@ -155,10 +163,14 @@ async function connectPane(pane) {
       if (data === '\x1b' || data === '\x03') { hideDirPopup(); inputBuf = ''; window.terminal.write(pane.ptyId, data); return; }
     }
 
-    if (data === '\r') { inputBuf = ''; hideDirPopup(); }
+    // IME 조합 중이면 PTY 전송 차단
+    if (imeHandle && imeHandle.isComposing() && data.length === 1 && WkHangulIme.isHangul(data)) return;
+
+    // 일반 입력
+    if (data === '\r') { if (imeHandle) imeHandle.flush(); inputBuf = ''; hideDirPopup(); }
     else if (data === '\x7f') { inputBuf = inputBuf.slice(0, -1); }
     else if (data === '\x03') { inputBuf = ''; hideDirPopup(); }
-    else if (data.length === 1 && data.charCodeAt(0) >= 32) { inputBuf += data; }
+    else if (data.charCodeAt(0) >= 32 && !data.startsWith('\x1b')) { inputBuf += data; }
     else { inputBuf = ''; hideDirPopup(); }
 
     window.terminal.write(pane.ptyId, data);

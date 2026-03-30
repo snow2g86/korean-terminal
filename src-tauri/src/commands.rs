@@ -4,6 +4,7 @@ use crate::pty_manager::PtyManager;
 pub fn log_from_js(msg: String) {
     eprintln!("[JS] {}", msg);
 }
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;

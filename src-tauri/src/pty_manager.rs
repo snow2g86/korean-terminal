@@ -6,6 +6,35 @@ use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::{AppHandle, Emitter};
 
+/// UTF-8 바이트 배열에서 마지막 완전한 문자의 끝 위치를 반환.
+/// 끝에 불완전한 멀티바이트 시퀀스가 있으면 그 앞까지만 반환.
+fn find_utf8_boundary(data: &[u8]) -> usize {
+    if data.is_empty() {
+        return 0;
+    }
+    // 끝에서부터 최대 3바이트 검사 (UTF-8 최대 4바이트)
+    let len = data.len();
+    let check_from = if len >= 4 { len - 4 } else { 0 };
+    // std::str::from_utf8로 유효 범위 확인
+    match std::str::from_utf8(data) {
+        Ok(_) => len, // 전체가 유효
+        Err(e) => {
+            let valid = e.valid_up_to();
+            if valid > 0 {
+                valid
+            } else {
+                // 모두 불완전 — 시작 바이트 찾기
+                for i in (check_from..len).rev() {
+                    if data[i] & 0x80 == 0 || data[i] & 0xC0 == 0xC0 {
+                        return i;
+                    }
+                }
+                0
+            }
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PtyDataPayload {
     pub id: u32,
@@ -90,16 +119,28 @@ impl PtyManager {
 
         self.sessions.lock().insert(id, session);
 
-        // PTY 출력 스레드
+        // PTY 출력 스레드 — UTF-8 경계 안전 처리
         let app_handle = app.clone();
         let session_id = id;
         std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
+            let mut pending = Vec::new();
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break,
                     Ok(n) => {
-                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                        pending.extend_from_slice(&buf[..n]);
+
+                        // UTF-8 유효 경계 찾기: 끝에서 불완전한 멀티바이트 시퀀스 보존
+                        let valid_end = find_utf8_boundary(&pending);
+                        if valid_end == 0 {
+                            // 아직 완전한 문자가 없으면 다음 읽기까지 대기
+                            continue;
+                        }
+
+                        let data = String::from_utf8_lossy(&pending[..valid_end]).to_string();
+                        pending.drain(..valid_end);
+
                         let _ = app_handle.emit(
                             "pty:data",
                             PtyDataPayload {
@@ -110,6 +151,17 @@ impl PtyManager {
                     }
                     Err(_) => break,
                 }
+            }
+            // 잔여 바이트 플러시
+            if !pending.is_empty() {
+                let data = String::from_utf8_lossy(&pending).to_string();
+                let _ = app_handle.emit(
+                    "pty:data",
+                    PtyDataPayload {
+                        id: session_id,
+                        data,
+                    },
+                );
             }
             let _ = app_handle.emit(
                 "pty:exit",

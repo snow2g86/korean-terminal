@@ -668,3 +668,10 @@ body {
 }
 .md-editor-textarea::-webkit-scrollbar { width: 6px; }
 .md-editor-textarea::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+
+/* === xterm.js IME 한글 입력 (WKWebView/Tauri) === */
+/* WKWebView IME가 작동하도록 textarea 크기 확보 */
+.xterm .xterm-helper-textarea {
+    min-width: 1em !important;
+    min-height: 1em !important;
+}
