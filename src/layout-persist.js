@@ -40,16 +40,21 @@ function scheduleSave() {
   saveTimer = setTimeout(saveLayout, 500);
 }
 
-// 주기적으로 모든 패널의 cwd를 캐시 (3초마다)
+// 주기적으로 모든 패널의 cwd를 캐시 (5초마다 — lsof가 느릴 수 있어 간격 확장)
+// pane 파괴 후 호출 방지를 위해 ptyId + allPanes.has 이중 확인
 setInterval(function() {
-  allPanes.forEach(function(pane) {
-    if (pane.paneType === 'terminal' && pane.ptyId) {
-      window.terminal.getCwd(pane.ptyId).then(function(cwd) {
+  allPanes.forEach(function(pane, paneId) {
+    if (!allPanes.has(paneId)) return;
+    if (pane.paneType !== 'terminal' || !pane.ptyId) return;
+    var capturedPtyId = pane.ptyId;
+    window.terminal.getCwd(capturedPtyId).then(function(cwd) {
+      // 응답이 돌아왔을 때 pane이 여전히 살아있고 같은 ptyId인 경우에만 저장
+      if (allPanes.has(paneId) && pane.ptyId === capturedPtyId && cwd) {
         pane._cachedCwd = cwd;
-      }).catch(function() {});
-    }
+      }
+    }).catch(function() {});
   });
-}, 3000);
+}, 5000);
 
 // --- 복원 ---
 

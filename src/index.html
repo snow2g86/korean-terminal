@@ -86,14 +86,28 @@
       .pane-terminal-area .xterm { height: 100%; }
     </style>
     <script>
-      // 에러 로깅 — 모든 JS 에러를 DOM에 표시
+      // 에러 로깅 — 누적 상한 + 과다 에러 폭주 방지
       window._errorLog = [];
+      var _MAX_ERRORS = 50;
+      function _pushError(entry) {
+        if (window._errorLog.length >= _MAX_ERRORS) {
+          window._errorLog.shift(); // 오래된 것 제거
+        }
+        window._errorLog.push(entry);
+        _showErrors();
+      }
       function _showErrors() {
         var d = document.getElementById('_debugPanel');
         if (!d) {
           d = document.createElement('pre');
           d.id = '_debugPanel';
           d.style.cssText = 'position:fixed;top:40px;left:60px;right:10px;bottom:10px;z-index:9999;background:rgba(0,0,0,0.95);color:#ff6b6b;font-size:12px;padding:12px;overflow:auto;font-family:monospace;white-space:pre-wrap;display:none;border:2px solid #ff6b6b;border-radius:8px;';
+          // 닫기 버튼
+          var closeBtn = document.createElement('button');
+          closeBtn.textContent = '✕';
+          closeBtn.style.cssText = 'position:absolute;top:4px;right:8px;background:transparent;color:#ff6b6b;border:none;font-size:16px;cursor:pointer;';
+          closeBtn.addEventListener('click', function() { d.style.display = 'none'; });
+          d.appendChild(closeBtn);
           document.body.appendChild(d);
         }
         if (window._errorLog.length > 0) {
@@ -103,13 +117,11 @@
       }
       window.onerror = function(msg, src, line, col, err) {
         var entry = '[ERROR] ' + msg + '\n  at ' + (src||'').split('/').pop() + ':' + line + ':' + col;
-        window._errorLog.push(entry);
-        _showErrors();
+        _pushError(entry);
       };
       window.addEventListener('unhandledrejection', function(e) {
         var entry = '[PROMISE] ' + (e.reason && e.reason.message || e.reason || 'unknown');
-        window._errorLog.push(entry);
-        _showErrors();
+        _pushError(entry);
       });
     </script>
     <script>

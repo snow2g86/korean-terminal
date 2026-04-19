@@ -69,18 +69,22 @@ function closeTab(tabId) {
 function renumberTabs() {
   var idx = 1;
   tabs.forEach(function(tab) {
-    tab.tabBtn.textContent = '';
-    tab.tabBtn.textContent = idx;
+    // 숫자 표시용 텍스트 노드만 교체 — 자식 element들을 유지해 이벤트 리스너 누수 방지
     tab.tabBtn.title = '터미널 ' + idx;
-    // status dot, close btn 재추가 (textContent로 지워졌으므로)
-    tab.tabBtn.appendChild(tab.tabStatusDot);
-    var closeBtn = document.createElement('button');
-    closeBtn.className = 'tab-btn-close';
-    closeBtn.textContent = '\u00d7';
-    closeBtn.addEventListener('click', (function(tid) {
-      return function(e) { e.stopPropagation(); closeTab(tid); };
-    })(tab.id));
-    tab.tabBtn.appendChild(closeBtn);
+    // 첫 텍스트 노드 찾기
+    var textNode = null;
+    for (var ci = 0; ci < tab.tabBtn.childNodes.length; ci++) {
+      if (tab.tabBtn.childNodes[ci].nodeType === Node.TEXT_NODE) {
+        textNode = tab.tabBtn.childNodes[ci];
+        break;
+      }
+    }
+    if (textNode) {
+      textNode.nodeValue = String(idx);
+    } else {
+      // 없으면 맨 앞에 추가
+      tab.tabBtn.insertBefore(document.createTextNode(String(idx)), tab.tabBtn.firstChild);
+    }
     idx++;
   });
 }

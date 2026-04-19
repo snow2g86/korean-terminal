@@ -34,7 +34,9 @@ var WkHangulIme = (function() {
     var composing = false;
     var pending = '';
     var flushTimer = null;
-    var skipNextOnData = false;
+    // 최근 flush한 문자 집합 — xterm onData에서 이 문자가 나오면 skip
+    var recentFlush = '';
+    var recentFlushTimer = null;
 
     function flush() {
       clearTimeout(flushTimer);
@@ -45,10 +47,10 @@ var WkHangulIme = (function() {
       pending = '';
       ta.value = '';
       if (text && onComposed) {
-        skipNextOnData = true;
+        recentFlush = text;
+        clearTimeout(recentFlushTimer);
+        recentFlushTimer = setTimeout(function() { recentFlush = ''; }, 80);
         onComposed(text);
-        // 약간의 지연 후 skipNextOnData 리셋
-        setTimeout(function() { skipNextOnData = false; }, 50);
       }
     }
 
@@ -99,11 +101,14 @@ var WkHangulIme = (function() {
       return true;
     });
 
-    // 4) onData 필터: 이미 flush로 보낸 문자의 누출 방지
+    // 4) onData 필터: 이미 flush로 보낸 문자의 누출 방지 (multi-char 안전)
     return {
       shouldSkip: function(data) {
-        if (skipNextOnData && data.length > 0 && isHangul(data)) {
-          skipNextOnData = false;
+        if (!recentFlush || !data) return false;
+        // recentFlush 내에 포함되는 한글 조각이면 skip
+        if (data.length <= recentFlush.length && recentFlush.indexOf(data) !== -1) {
+          // 소비된 부분 제거
+          recentFlush = recentFlush.replace(data, '');
           return true;
         }
         return false;

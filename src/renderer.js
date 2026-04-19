@@ -34,7 +34,8 @@ window.addEventListener('resize', function() {
     if (typeof updateImePosition === 'function') updateImePosition();
   }, 100);
 });
-window.addEventListener('beforeunload', function() { tabs.forEach(function(tab) { destroyTree(tab.paneRoot); }); });
+// 주: PTY 정리는 Rust의 WindowEvent::CloseRequested/Destroyed 및 RunEvent::Exit이 담당.
+// 브라우저 beforeunload는 동기 IPC 보장이 없어 race 상태만 유발하므로 destroy는 호출하지 않음.
 
 // --- Start (설정 로드 → 레이아웃 복원 또는 시작 탭) ---
 (async function() {

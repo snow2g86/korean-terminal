@@ -102,27 +102,30 @@ async function connectPane(pane) {
   var ptyId = await window.terminal.create({ cols: cols, rows: rows, cwd: pane._restoreCwd || '' });
   pane.ptyId = ptyId;
 
-  // PTY output -> xterm + 활동 알림 (출력 완료 감지)
+  // PTY output -> xterm + 활동 알림 — pane.ptyId 기반 등록 (pane 파괴 시 자동 해제)
   pane._notifyTimer = null;
-  window.terminal.onData(function(payload) {
-    if (payload.id === pane.ptyId) {
-      pane.term.write(payload.data);
-      if (focusedPaneId !== pane.paneId) {
-        clearTimeout(pane._notifyTimer);
-        pane._notifyTimer = setTimeout(function() {
-          if (focusedPaneId !== pane.paneId) showPaneNotify(pane);
-        }, 800);
-      }
+  window.terminal.onData(ptyId, function(payload) {
+    if (!pane.term) return; // 이미 dispose된 pane 보호
+    pane.term.write(payload.data);
+    if (focusedPaneId !== pane.paneId) {
+      clearTimeout(pane._notifyTimer);
+      pane._notifyTimer = setTimeout(function() {
+        if (focusedPaneId !== pane.paneId) showPaneNotify(pane);
+      }, 800);
     }
   });
 
   // PTY exit
-  window.terminal.onExit(function(payload) {
-    if (payload.id === pane.ptyId) {
-      pane.term.write('\r\n[\ud504\ub85c\uc138\uc2a4 \uc885\ub8cc]\r\n');
-      pane.ptyId = null;
-      updateTabStatusDot(pane.tabId);
+  window.terminal.onExit(ptyId, function(payload) {
+    if (pane.term) {
+      try { pane.term.write('\r\n[\ud504\ub85c\uc138\uc2a4 \uc885\ub8cc: ' + payload.exitCode + ']\r\n'); }
+      catch (e) {}
     }
+    // 핸들러 제거 (Rust가 이미 sessions에서 정리했지만 재호출 방어)
+    window.terminal.offData(ptyId);
+    window.terminal.offExit(ptyId);
+    pane.ptyId = null;
+    updateTabStatusDot(pane.tabId);
   });
 
   // xterm input -> PTY (cd autocomplete)
@@ -226,7 +229,18 @@ function focusPane(paneId) {
 }
 
 function destroyPaneResources(pane) {
-  if (pane.ptyId) { window.terminal.destroy(pane.ptyId); pane.ptyId = null; }
-  if (pane.term) { pane.term.dispose(); pane.term = null; }
+  // 타이머 정리
+  if (pane._notifyTimer) { clearTimeout(pane._notifyTimer); pane._notifyTimer = null; }
+  // PTY 파괴 — destroy가 내부에서 콜백 해제도 수행
+  if (pane.ptyId) {
+    var pid = pane.ptyId;
+    pane.ptyId = null;
+    window.terminal.destroy(pid);
+  }
+  if (pane.term) {
+    try { pane.term.dispose(); } catch (e) {}
+    pane.term = null;
+  }
+  pane.fitAddon = null;
   allPanes.delete(pane.paneId);
 }

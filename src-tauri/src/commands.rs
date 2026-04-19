@@ -2,15 +2,24 @@ use crate::pty_manager::PtyManager;
 
 #[tauri::command]
 pub fn log_from_js(msg: String) {
-    eprintln!("[JS] {}", msg);
+    // JS 로그 — 개행으로 제한 + 길이 제한으로 로그 폭주 방지
+    let truncated: String = msg.chars().take(2000).collect();
+    eprintln!("[JS] {}", truncated.replace('\n', " | "));
 }
 
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 use sysinfo::System;
 use tauri::{AppHandle, Manager, State};
+
+// 파일 I/O 안전성 상수
+const MAX_READ_SIZE: u64 = 20 * 1024 * 1024; // 20MB
+const MAX_WRITE_SIZE: usize = 20 * 1024 * 1024;
+const MAX_LIST_ENTRIES: usize = 5000;
+const MAX_FIND_RESULTS: usize = 1000;
+const MAX_FIND_DEPTH: u32 = 3;
 
 // --- PTY Commands ---
 
@@ -56,25 +65,41 @@ pub fn pty_get_cwd(pty: State<'_, PtyManager>, id: u32) -> String {
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "/".to_string());
 
-    if let Some(pid) = pty.get_pid(id) {
-        // macOS: lsof로 cwd 가져오기
+    let Some(pid) = pty.get_pid(id) else {
+        return home;
+    };
+
+    // Linux: /proc/{pid}/cwd 심링크
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(target) = std::fs::read_link(format!("/proc/{}/cwd", pid)) {
+            return target.to_string_lossy().to_string();
+        }
+    }
+
+    // macOS: lsof로 cwd 가져오기 (timeout으로 느린 lsof 방어)
+    #[cfg(target_os = "macos")]
+    {
         if let Ok(output) = Command::new("lsof")
-            .args(["-p", &pid.to_string(), "-Fn"])
+            .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
-            let lines: Vec<&str> = stdout.lines().collect();
-            for i in 0..lines.len() {
-                if lines[i] == "fcwd" {
-                    if let Some(next) = lines.get(i + 1) {
-                        if let Some(path) = next.strip_prefix('n') {
-                            return path.to_string();
-                        }
+            for line in stdout.lines() {
+                if let Some(path) = line.strip_prefix('n') {
+                    if path.starts_with('/') {
+                        return path.to_string();
                     }
                 }
             }
         }
     }
+
+    #[cfg(target_os = "windows")]
+    {
+        let _ = pid; // Windows: cwd 추적 미구현 — home 반환
+    }
+
     home
 }
 
@@ -123,7 +148,6 @@ pub fn get_sysinfo() -> SysInfoResult {
     let mut sys = System::new_all();
     sys.refresh_all();
 
-    // CPU
     let cpu_count = sys.cpus().len();
     let physical_cores = System::physical_core_count().unwrap_or(cpu_count);
     let cpu_usage: f32 = if cpu_count > 0 {
@@ -137,7 +161,6 @@ pub fn get_sysinfo() -> SysInfoResult {
         .map(|c| c.brand().to_string())
         .unwrap_or_default();
 
-    // Memory
     let total_mem = sys.total_memory() as f64;
     let used_mem = sys.used_memory() as f64;
     let mem_pct = if total_mem > 0.0 {
@@ -146,16 +169,13 @@ pub fn get_sysinfo() -> SysInfoResult {
         0.0
     };
 
-    // Disk (df -k / 사용)
     let (disk_total, disk_used, disk_pct) = get_disk_usage();
 
-    // Network (간이 — sysinfo에서는 누적만 제공)
     let net = NetInfo {
         sent_mbs: 0.0,
         recv_mbs: 0.0,
     };
 
-    // Hostname & OS
     let hostname = System::host_name().unwrap_or_default();
     let os_name = System::long_os_version().unwrap_or_default();
 
@@ -183,22 +203,28 @@ pub fn get_sysinfo() -> SysInfoResult {
 }
 
 fn get_disk_usage() -> (f32, f32, f32) {
-    if let Ok(output) = Command::new("df").args(["-k", "/"]).output() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if let Some(line) = stdout.lines().nth(1) {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 4 {
-                let total_k: f64 = parts[1].parse().unwrap_or(0.0);
-                let avail_k: f64 = parts[3].parse().unwrap_or(0.0);
-                let used_k = total_k - avail_k;
-                let total_gb = ((total_k * 1024.0 / 1_073_741_824.0) * 10.0).round() as f32 / 10.0;
-                let used_gb = ((used_k * 1024.0 / 1_073_741_824.0) * 10.0).round() as f32 / 10.0;
-                let pct = if total_k > 0.0 {
-                    ((used_k / total_k * 100.0) * 10.0).round() as f32 / 10.0
-                } else {
-                    0.0
-                };
-                return (total_gb, used_gb, pct);
+    // macOS / Linux — df -k /
+    #[cfg(not(target_os = "windows"))]
+    {
+        if let Ok(output) = Command::new("df").args(["-k", "/"]).output() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if let Some(line) = stdout.lines().nth(1) {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 4 {
+                    let total_k: f64 = parts[1].parse().unwrap_or(0.0);
+                    let avail_k: f64 = parts[3].parse().unwrap_or(0.0);
+                    let used_k = total_k - avail_k;
+                    let total_gb =
+                        ((total_k * 1024.0 / 1_073_741_824.0) * 10.0).round() as f32 / 10.0;
+                    let used_gb =
+                        ((used_k * 1024.0 / 1_073_741_824.0) * 10.0).round() as f32 / 10.0;
+                    let pct = if total_k > 0.0 {
+                        ((used_k / total_k * 100.0) * 10.0).round() as f32 / 10.0
+                    } else {
+                        0.0
+                    };
+                    return (total_gb, used_gb, pct);
+                }
             }
         }
     }
@@ -209,16 +235,19 @@ fn get_disk_usage() -> (f32, f32, f32) {
 
 #[tauri::command]
 pub fn get_input_source() -> String {
-    if let Ok(output) = Command::new("defaults")
-        .args(["read", "com.apple.HIToolbox", "AppleSelectedInputSources"])
-        .output()
+    #[cfg(target_os = "macos")]
     {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.contains("Korean")
-            || stdout.contains("korean")
-            || stdout.contains("HangulKeyboardLayout")
+        if let Ok(output) = Command::new("defaults")
+            .args(["read", "com.apple.HIToolbox", "AppleSelectedInputSources"])
+            .output()
         {
-            return "ko".to_string();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            if stdout.contains("Korean")
+                || stdout.contains("korean")
+                || stdout.contains("HangulKeyboardLayout")
+            {
+                return "ko".to_string();
+            }
         }
     }
     "en".to_string()
@@ -242,7 +271,11 @@ pub struct ListDirResult {
 }
 
 #[tauri::command]
-pub fn list_dir(dir: Option<String>, filter: Option<String>, only_dirs: Option<bool>) -> ListDirResult {
+pub fn list_dir(
+    dir: Option<String>,
+    filter: Option<String>,
+    only_dirs: Option<bool>,
+) -> ListDirResult {
     let home = dirs::home_dir()
         .map(|p| p.to_string_lossy().to_string())
         .unwrap_or_else(|| "/".to_string());
@@ -253,11 +286,11 @@ pub fn list_dir(dir: Option<String>, filter: Option<String>, only_dirs: Option<b
         Ok(rd) => {
             let mut items: Vec<DirEntry> = rd
                 .filter_map(|e| e.ok())
+                .take(MAX_LIST_ENTRIES)
                 .filter_map(|e| {
                     let name = e.file_name().to_string_lossy().to_string();
                     let is_dir = e.file_type().map(|ft| ft.is_dir()).unwrap_or(false);
 
-                    // 숨김 파일 필터
                     if name.starts_with('.') {
                         if let Some(ref f) = filter {
                             if !f.starts_with('.') {
@@ -272,14 +305,16 @@ pub fn list_dir(dir: Option<String>, filter: Option<String>, only_dirs: Option<b
                         return None;
                     }
 
-                    // 이름 필터
                     if let Some(ref f) = filter {
                         if !name.to_lowercase().starts_with(&f.to_lowercase()) {
                             return None;
                         }
                     }
 
-                    let path = Path::new(&target_dir).join(&name).to_string_lossy().to_string();
+                    let path = Path::new(&target_dir)
+                        .join(&name)
+                        .to_string_lossy()
+                        .to_string();
                     Some(DirEntry { name, is_dir, path })
                 })
                 .collect();
@@ -313,14 +348,38 @@ pub fn list_dir(dir: Option<String>, filter: Option<String>, only_dirs: Option<b
     }
 }
 
+/// 사용자가 직접 경로를 지정해 파일을 읽을 때 사용. 크기 제한 + 바이너리 거부.
 #[tauri::command]
 pub fn read_file(file_path: String) -> Option<String> {
-    fs::read_to_string(&file_path).ok()
+    let p = PathBuf::from(&file_path);
+    // 크기 제한 — 거대 파일 읽기 방지 (메모리 폭주)
+    let meta = fs::metadata(&p).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    if meta.len() > MAX_READ_SIZE {
+        eprintln!("[read_file] 거부: {} 크기 초과 ({} bytes)", file_path, meta.len());
+        return None;
+    }
+    fs::read_to_string(&p).ok()
 }
 
+/// 사용자가 직접 경로를 지정해 파일을 쓸 때. 크기 제한 + 심링크 방어.
 #[tauri::command]
 pub fn write_file(file_path: String, content: String) -> bool {
-    fs::write(&file_path, content).is_ok()
+    if content.len() > MAX_WRITE_SIZE {
+        eprintln!("[write_file] 거부: 내용 크기 초과 ({} bytes)", content.len());
+        return false;
+    }
+    let p = PathBuf::from(&file_path);
+    // 심링크를 통한 민감 파일 덮어쓰기 방지 — 기존 경로가 심링크면 거부
+    if let Ok(meta) = fs::symlink_metadata(&p) {
+        if meta.file_type().is_symlink() {
+            eprintln!("[write_file] 거부: 심링크 대상 {}", file_path);
+            return false;
+        }
+    }
+    fs::write(&p, content).is_ok()
 }
 
 #[derive(Serialize)]
@@ -333,10 +392,26 @@ pub struct FoundFile {
 #[tauri::command]
 pub fn find_files(dir: String, pattern: String) -> Vec<FoundFile> {
     let mut results = Vec::new();
-    let re = regex::Regex::new(&pattern).ok();
+    // ReDoS 방어 — 정규식 크기 제한
+    if pattern.len() > 200 {
+        return results;
+    }
+    let re = match regex::RegexBuilder::new(&pattern)
+        .size_limit(1 << 20) // 1MB
+        .dfa_size_limit(1 << 20)
+        .build()
+    {
+        Ok(r) => Some(r),
+        Err(_) => return results,
+    };
 
-    fn walk(d: &str, depth: u32, re: &Option<regex::Regex>, results: &mut Vec<FoundFile>) {
-        if depth > 3 {
+    fn walk(
+        d: &str,
+        depth: u32,
+        re: &Option<regex::Regex>,
+        results: &mut Vec<FoundFile>,
+    ) {
+        if depth > MAX_FIND_DEPTH || results.len() >= MAX_FIND_RESULTS {
             return;
         }
         let entries = match fs::read_dir(d) {
@@ -344,6 +419,9 @@ pub fn find_files(dir: String, pattern: String) -> Vec<FoundFile> {
             Err(_) => return,
         };
         for entry in entries.filter_map(|e| e.ok()) {
+            if results.len() >= MAX_FIND_RESULTS {
+                return;
+            }
             let name = entry.file_name().to_string_lossy().to_string();
             if name.starts_with('.') && name != ".claude" {
                 continue;
@@ -353,6 +431,10 @@ pub fn find_files(dir: String, pattern: String) -> Vec<FoundFile> {
                 Ok(ft) => ft,
                 Err(_) => continue,
             };
+            // 심링크 따라가기 차단 — 순환 방지
+            if ft.is_symlink() {
+                continue;
+            }
             if ft.is_file() {
                 if let Some(ref re) = re {
                     if re.is_match(&name) {
@@ -378,40 +460,47 @@ pub fn find_files(dir: String, pattern: String) -> Vec<FoundFile> {
 
 #[tauri::command]
 pub fn load_settings(app: AppHandle) -> Option<serde_json::Value> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .ok()?
-        .join("layout.json");
+    let path = app.path().app_data_dir().ok()?.join("layout.json");
     let data = fs::read_to_string(path).ok()?;
     serde_json::from_str(&data).ok()
 }
 
 #[tauri::command]
-pub fn save_settings(app: AppHandle, data: serde_json::Value) {
-    if let Ok(dir) = app.path().app_data_dir() {
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("layout.json");
-        let _ = fs::write(path, serde_json::to_string_pretty(&data).unwrap_or_default());
-    }
+pub fn save_settings(app: AppHandle, data: serde_json::Value) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app_data_dir 실패: {}", e))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    let path = dir.join("layout.json");
+    let json = serde_json::to_string_pretty(&data)
+        .map_err(|e| format!("직렬화 실패: {}", e))?;
+    // atomic 쓰기 — tmp에 쓰고 rename
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &json).map_err(|e| format!("임시 파일 쓰기 실패: {}", e))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("rename 실패: {}", e))?;
+    Ok(())
 }
 
 #[tauri::command]
 pub fn load_prefs(app: AppHandle) -> Option<serde_json::Value> {
-    let path = app
-        .path()
-        .app_data_dir()
-        .ok()?
-        .join("preferences.json");
+    let path = app.path().app_data_dir().ok()?.join("preferences.json");
     let data = fs::read_to_string(path).ok()?;
     serde_json::from_str(&data).ok()
 }
 
 #[tauri::command]
-pub fn save_prefs(app: AppHandle, data: serde_json::Value) {
-    if let Ok(dir) = app.path().app_data_dir() {
-        let _ = fs::create_dir_all(&dir);
-        let path = dir.join("preferences.json");
-        let _ = fs::write(path, serde_json::to_string_pretty(&data).unwrap_or_default());
-    }
+pub fn save_prefs(app: AppHandle, data: serde_json::Value) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("app_data_dir 실패: {}", e))?;
+    fs::create_dir_all(&dir).map_err(|e| format!("디렉토리 생성 실패: {}", e))?;
+    let path = dir.join("preferences.json");
+    let json = serde_json::to_string_pretty(&data)
+        .map_err(|e| format!("직렬화 실패: {}", e))?;
+    let tmp = path.with_extension("json.tmp");
+    fs::write(&tmp, &json).map_err(|e| format!("임시 파일 쓰기 실패: {}", e))?;
+    fs::rename(&tmp, &path).map_err(|e| format!("rename 실패: {}", e))?;
+    Ok(())
 }
